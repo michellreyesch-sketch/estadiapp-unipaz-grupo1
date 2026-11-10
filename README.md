@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es-CO">
 <head>
@@ -369,6 +368,59 @@ tbody tr.total td { font-weight: 700; background: rgba(233,162,59,.18); }
   .barra-fila { grid-template-columns: 90px 1fr; }
   .barra-val { grid-column: 1 / -1; text-align: left; margin-bottom: 4px; }
 }
+
+/* ==========================================================
+   9. GRÁFICOS SVG Y LECTURA AUTOMÁTICA
+   ========================================================== */
+.grafico-wrap {
+  margin-top: 12px;
+  padding: 8px;
+  background: #fff;
+  border: 1.5px solid var(--borde);
+  border-radius: 10px;
+}
+svg.grafico { display: block; width: 100%; max-width: 820px; height: auto; margin: 0 auto; }
+.g-rej    { stroke: #e3e9f0; stroke-width: 1; }
+.g-eje    { stroke: #1F3A5F; stroke-width: 1.5; }
+.g-tick   { font-size: 11px; fill: #44546a; }
+.g-cat    { font-size: 12px; font-weight: 600; fill: #1F3A5F; }
+.g-titulo { font-size: 15px; font-weight: 700; fill: #1F3A5F; text-anchor: middle; }
+.g-sub    { font-size: 12px; fill: #6b7785; text-anchor: middle; }
+.g-eje-t  { font-size: 12px; font-weight: 600; fill: #1F3A5F; }
+.g-leyenda{ font-size: 11.5px; fill: #44546a; }
+.g-barra  { fill: #2A9D8F; fill-opacity: .8; stroke: #1F3A5F; stroke-width: 1; }
+.g-poli   { fill: none; stroke: #E9A23B; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.g-punto  { fill: #E9A23B; stroke: #fff; stroke-width: 1.5; }
+.g-valor  { font-size: 11px; font-weight: 700; fill: #1F3A5F; }
+.g-caja   { fill: rgba(42,157,143,.28); stroke: #1F3A5F; stroke-width: 2; }
+.g-bigote { stroke: #1F3A5F; stroke-width: 2; }
+.g-med    { stroke: #E9A23B; stroke-width: 4; }
+.g-media  { fill: #1F3A5F; stroke: #fff; stroke-width: 1.5; }
+.g-guia   { stroke: #8a97a8; stroke-width: 1; stroke-dasharray: 2 3; }
+.g-etq    { font-size: 12px; font-weight: 700; fill: #1F3A5F; }
+
+.lectura { list-style: none; margin-top: 6px; }
+.lectura li {
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  background: #fbfcfe;
+  border: 1.5px solid var(--borde);
+  border-left: 5px solid var(--verde);
+  border-radius: 8px;
+  font-size: .93rem;
+}
+.lectura li small { display: block; color: var(--gris); margin-top: 4px; font-size: .8rem; }
+.insignia {
+  display: inline-block;
+  padding: 2px 10px;
+  margin-left: 6px;
+  border-radius: 12px;
+  font-size: .8rem;
+  font-weight: 700;
+}
+.ins-verde { background: rgba(42,157,143,.2); color: #17695f; }
+.ins-ambar { background: rgba(233,162,59,.28); color: #7a4e07; }
+.ins-rojo  { background: rgba(192,57,43,.14); color: #8f2a1f; }
 </style>
 </head>
 <body>
@@ -1448,7 +1500,7 @@ tbody tr.total td { font-weight: 700; background: rgba(233,162,59,.18); }
   manejarArchivo($("file-json"), prepararRestauracion);
 
   /* ==========================================================
-     NUEVO: PESTAÑA ANÁLISIS
+     PESTAÑA ANÁLISIS
      ========================================================== */
 
   /* ---------- 16. DEFINICIÓN DE VARIABLES ANALIZABLES ---------- */
@@ -1536,7 +1588,7 @@ tbody tr.total td { font-weight: 700; background: rgba(233,162,59,.18); }
 
   /* ---------- 19. CÁLCULOS ESTADÍSTICOS ---------- */
 
-  /** Gráfico de barras horizontal hecho con HTML/CSS. items: [{ etq, val, pct }] */
+  /** Gráfico de barras horizontal hecho con HTML/CSS (versión anterior, ya no se usa en pantalla). */
   function htmlBarras(items) {
     const max = Math.max(1, ...items.map((i) => i.val));
     return '<div class="barras">' + items.map((i) =>
@@ -1587,6 +1639,336 @@ tbody tr.total td { font-weight: 700; background: rgba(233,162,59,.18); }
     });
     return { n, min, max, R, kRaw, k, A, clases, rangoCero };
   }
+
+  /* ==========================================================
+     NUEVO: GRÁFICOS SVG Y LECTURA AUTOMÁTICA
+     ========================================================== */
+
+  /* ---------- 19B. UTILIDADES DE GRÁFICOS ---------- */
+
+  /** Ancho interno (viewBox) del gráfico: más angosto en celulares para que el texto siga legible. */
+  const esMovil = () => window.innerWidth < 600;
+  const anchoGrafico = () => (esMovil() ? 340 : 760);
+
+  /** Redondea a un decimal para escribir coordenadas SVG compactas. */
+  const p1 = (n) => (+n).toFixed(1);
+
+  /** Calcula marcas "bonitas" para un eje entre lo y hi. Devuelve { valores, paso, dec }. */
+  function ticksNice(lo, hi, cuantos) {
+    if (hi <= lo) hi = lo + 1;
+    const aprox = (hi - lo) / cuantos;
+    const mag = Math.pow(10, Math.floor(Math.log10(aprox)));
+    const norm = aprox / mag;
+    const paso = (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag;
+    const ini = Math.ceil(lo / paso - 1e-9) * paso;
+    const valores = [];
+    for (let v = ini; v <= hi + paso * 1e-9; v += paso) valores.push(+v.toFixed(10));
+    const dec = Math.max(0, Math.min(6, -Math.floor(Math.log10(paso) + 1e-9)));
+    return { valores, paso, dec };
+  }
+
+  /** Abre un SVG con su título, subtítulo y descripción accesible. */
+  function svgAbrir(W, H, titulo, sub, desc) {
+    return `<svg class="grafico" viewBox="0 0 ${W} ${H}" role="img" preserveAspectRatio="xMidYMid meet" aria-label="${esc(titulo + ". " + sub)}">` +
+      `<title>${esc(titulo)}</title><desc>${esc(desc)}</desc>` +
+      `<text class="g-titulo" x="${W / 2}" y="22">${esc(titulo)}</text>` +
+      `<text class="g-sub" x="${W / 2}" y="40">${esc(sub)}</text>`;
+  }
+
+  /* ---------- 19C. HISTOGRAMA + POLÍGONO DE FRECUENCIAS ---------- */
+
+  /** Histograma con polígono de frecuencias superpuesto, a partir de la tabla agrupada g. */
+  function svgHistograma(g, d, v, n) {
+    const W = anchoGrafico(), movil = esMovil();
+    const m = { t: 58, r: movil ? 14 : 26, b: 112, l: movil ? 46 : 66 };
+    const ph = movil ? 210 : 250;
+    const H = m.t + ph + m.b;
+    const pw = W - m.l - m.r;
+    const y0 = m.t + ph;
+    const cl = g.clases, k = g.k, A = g.A;
+    const fl = (val) => fmt(val, d);
+
+    // Eje X: se deja una clase vacía a cada lado para cerrar el polígono en cero
+    const xMin = cl[0].li - A, xMax = cl[k - 1].ls + A;
+    const sx = (x) => m.l + (x - xMin) / (xMax - xMin) * pw;
+
+    // Eje Y: frecuencias enteras
+    const maxF = Math.max(1, ...cl.map((c) => c.fi));
+    const paso = Math.max(1, Math.round(ticksNice(0, maxF, 5).paso));
+    const yTop = Math.ceil(maxF / paso) * paso;
+    const sy = (f) => m.t + ph - f / yTop * ph;
+
+    let s = svgAbrir(W, H, "Histograma y polígono de frecuencias", `${v.nombre} · n = ${n}`,
+      `Histograma de ${k} clases con polígono de frecuencias superpuesto para ${v.nombre}.`);
+
+    // Cuadrícula y marcas del eje Y
+    for (let f = 0; f <= yTop; f += paso) {
+      s += `<line class="g-rej" x1="${m.l}" x2="${W - m.r}" y1="${p1(sy(f))}" y2="${p1(sy(f))}"/>` +
+           `<text class="g-tick" x="${m.l - 8}" y="${p1(sy(f) + 4)}" text-anchor="end">${f}</text>`;
+    }
+
+    // Barras del histograma
+    cl.forEach((c, j) => {
+      const x0 = sx(c.li), x1 = sx(c.ls), h = c.fi / yTop * ph;
+      const lim = `[${fl(c.li)}; ${fl(c.ls)}${j === k - 1 ? "]" : ")"}`;
+      s += `<rect class="g-barra" x="${p1(x0)}" y="${p1(y0 - h)}" width="${p1(x1 - x0)}" height="${p1(h)}">` +
+           `<title>Clase ${j + 1} ${lim}: fi = ${c.fi} (${fmt(c.hi, 2)} %)</title></rect>`;
+      if (c.fi > 0) {
+        s += `<text class="g-valor" x="${p1((x0 + x1) / 2)}" y="${p1(y0 - h - 5)}" text-anchor="middle">${c.fi}</text>`;
+      }
+    });
+
+    // Polígono de frecuencias: marcas de clase + una clase vacía a cada lado
+    const pts = [{ x: cl[0].xi - A, f: 0 }]
+      .concat(cl.map((c) => ({ x: c.xi, f: c.fi })))
+      .concat([{ x: cl[k - 1].xi + A, f: 0 }]);
+    s += `<polyline class="g-poli" points="${pts.map((q) => p1(sx(q.x)) + "," + p1(sy(q.f))).join(" ")}"/>`;
+    pts.forEach((q) => { s += `<circle class="g-punto" cx="${p1(sx(q.x))}" cy="${p1(sy(q.f))}" r="3.5"/>`; });
+
+    // Ejes
+    s += `<line class="g-eje" x1="${m.l}" x2="${W - m.r}" y1="${y0}" y2="${y0}"/>` +
+         `<line class="g-eje" x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${y0}"/>`;
+
+    // Marcas del eje X en los límites de clase (se omiten algunas si no caben)
+    const pxClase = A / (xMax - xMin) * pw;
+    const salto = Math.max(1, Math.ceil(22 / pxClase));
+    const lims = cl.map((c) => c.li).concat([cl[k - 1].ls]);
+    lims.forEach((val, j) => {
+      const x = sx(val);
+      s += `<line class="g-eje" x1="${p1(x)}" x2="${p1(x)}" y1="${y0}" y2="${y0 + 5}"/>`;
+      if (j % salto === 0) {
+        s += `<text class="g-tick" x="${p1(x)}" y="${y0 + 17}" text-anchor="end" transform="rotate(-40 ${p1(x)} ${y0 + 17})">${fl(val)}</text>`;
+      }
+    });
+
+    // Títulos de los ejes
+    s += `<text class="g-eje-t" x="${p1(m.l + pw / 2)}" y="${y0 + 82}" text-anchor="middle">${esc(v.nombre)} — límites de clase</text>` +
+         `<text class="g-eje-t" x="14" y="${p1(m.t + ph / 2)}" text-anchor="middle" transform="rotate(-90 14 ${p1(m.t + ph / 2)})">Frecuencia absoluta (fi)</text>`;
+
+    // Leyenda
+    const yl = y0 + 103;
+    s += `<rect class="g-barra" x="${m.l}" y="${yl - 9}" width="14" height="10"/>` +
+         `<text class="g-leyenda" x="${m.l + 19}" y="${yl}">Histograma</text>` +
+         `<line class="g-poli" x1="${m.l + 92}" x2="${m.l + 112}" y1="${yl - 4}" y2="${yl - 4}"/>` +
+         `<circle class="g-punto" cx="${m.l + 102}" cy="${yl - 4}" r="3.5"/>` +
+         `<text class="g-leyenda" x="${m.l + 118}" y="${yl}">Polígono de frecuencias</text>`;
+
+    return s + "</svg>";
+  }
+
+  /* ---------- 19D. DIAGRAMA DE CAJA Y BIGOTES ---------- */
+
+  /** Diagrama de caja horizontal. est = { min, q1, me, q3, max, media }. */
+  function svgCaja(est, v, n) {
+    const W = anchoGrafico(), movil = esMovil();
+    const m = { t: 56, r: movil ? 18 : 30, l: movil ? 40 : 52 };
+    const pw = W - m.l - m.r;
+
+    // Dominio del eje con un pequeño margen a cada lado
+    let pad = (est.max - est.min) * 0.06;
+    if (pad === 0) pad = Math.max(Math.abs(est.min) * 0.05, 1);
+    const dLo = est.min - pad, dHi = est.max + pad;
+    const sx = (x) => m.l + (x - dLo) / (dHi - dLo) * pw;
+    const tk = ticksNice(dLo, dHi, movil ? 4 : 7);
+
+    const yBox = m.t + 56, bh = 46, yMid = yBox + bh / 2, yEje = yBox + bh + 22;
+    const H = yEje + 78;
+
+    let s = svgAbrir(W, H, "Diagrama de caja y bigotes", `${v.nombre} · n = ${n}`,
+      "Diagrama de caja con mínimo, primer cuartil, mediana, tercer cuartil, máximo y media.");
+
+    // Cuadrícula vertical y marcas del eje X
+    tk.valores.forEach((t) => {
+      const x = sx(t);
+      s += `<line class="g-rej" x1="${p1(x)}" x2="${p1(x)}" y1="${yBox - 6}" y2="${yEje}"/>` +
+           `<line class="g-eje" x1="${p1(x)}" x2="${p1(x)}" y1="${yEje}" y2="${yEje + 5}"/>` +
+           `<text class="g-tick" x="${p1(x)}" y="${yEje + 19}" text-anchor="middle">${fmt(t, tk.dec)}</text>`;
+    });
+    s += `<line class="g-eje" x1="${m.l}" x2="${W - m.r}" y1="${yEje}" y2="${yEje}"/>`;
+
+    // Bigotes (mínimo → Q1 y Q3 → máximo) con remates
+    const xMin = sx(est.min), xQ1 = sx(est.q1), xMe = sx(est.me), xQ3 = sx(est.q3), xMax = sx(est.max), xMd = sx(est.media);
+    s += `<line class="g-bigote" x1="${p1(xMin)}" x2="${p1(xQ1)}" y1="${yMid}" y2="${yMid}"/>` +
+         `<line class="g-bigote" x1="${p1(xQ3)}" x2="${p1(xMax)}" y1="${yMid}" y2="${yMid}"/>` +
+         `<line class="g-bigote" x1="${p1(xMin)}" x2="${p1(xMin)}" y1="${yMid - 11}" y2="${yMid + 11}"/>` +
+         `<line class="g-bigote" x1="${p1(xMax)}" x2="${p1(xMax)}" y1="${yMid - 11}" y2="${yMid + 11}"/>`;
+
+    // Caja (Q1 a Q3), mediana y media
+    s += `<rect class="g-caja" x="${p1(xQ1)}" y="${yBox}" width="${p1(Math.max(xQ3 - xQ1, 0))}" height="${bh}"/>` +
+         `<line class="g-med" x1="${p1(xMe)}" x2="${p1(xMe)}" y1="${yBox}" y2="${yBox + bh}"/>` +
+         `<polygon class="g-media" points="${p1(xMd)},${yMid - 9} ${p1(xMd + 9)},${yMid} ${p1(xMd)},${yMid + 9} ${p1(xMd - 9)},${yMid}"/>`;
+
+    // Etiquetas sobre la caja (se agrupan y se reparten en filas para que no se encimen)
+    const bruto = [
+      { x: xMin, t: "Mín", top: yMid - 11 },
+      { x: xQ1,  t: "Q1",  top: yBox },
+      { x: xMe,  t: "Me",  top: yBox },
+      { x: xQ3,  t: "Q3",  top: yBox },
+      { x: xMax, t: "Máx", top: yMid - 11 }
+    ];
+    const grupos = [];
+    bruto.forEach((it) => {
+      const gp = grupos.find((q) => Math.abs(q.x - it.x) < 3);
+      if (gp) { gp.t += "/" + it.t; gp.top = Math.min(gp.top, it.top); }
+      else grupos.push({ x: it.x, t: it.t, top: it.top });
+    });
+    const ult = [{ x: -999, w: 0 }, { x: -999, w: 0 }, { x: -999, w: 0 }];
+    grupos.forEach((q) => {
+      const w = q.t.length * 7 + 8;
+      let fila = -1, mejor = -Infinity;
+      ult.forEach((u, i) => {
+        const dist = (q.x - u.x) - (w + u.w) / 2;
+        if (fila < 0 && dist >= 0) fila = i;
+        if (dist > mejor) { mejor = dist; if (fila < 0) fila = -2 - i; }
+      });
+      if (fila < 0) fila = -fila - 2;     // sin espacio libre: se usa la fila con más holgura
+      ult[fila] = { x: q.x, w };
+      const yt = yBox - 12 - fila * 15;
+      s += `<line class="g-guia" x1="${p1(q.x)}" x2="${p1(q.x)}" y1="${yt + 3}" y2="${q.top}"/>` +
+           `<text class="g-etq" x="${p1(q.x)}" y="${yt}" text-anchor="middle">${q.t}</text>`;
+    });
+    // Etiqueta de la media, debajo de la caja
+    s += `<line class="g-guia" x1="${p1(xMd)}" x2="${p1(xMd)}" y1="${yMid + 9}" y2="${yBox + bh + 3}"/>` +
+         `<text class="g-etq" x="${p1(xMd)}" y="${yBox + bh + 15}" text-anchor="middle">x̄</text>`;
+
+    // Títulos de los ejes
+    s += `<text class="g-eje-t" x="${p1(m.l + pw / 2)}" y="${yEje + 44}" text-anchor="middle">${esc(v.nombre)}</text>` +
+         `<text class="g-eje-t" x="14" y="${yMid}" text-anchor="middle" transform="rotate(-90 14 ${yMid})">${esc(v.corto)}</text>`;
+
+    // Leyenda
+    const yl = yEje + 66;
+    s += `<rect class="g-caja" x="${m.l}" y="${yl - 10}" width="16" height="11"/>` +
+         `<text class="g-leyenda" x="${m.l + 21}" y="${yl}">Q1–Q3</text>` +
+         `<line class="g-med" x1="${m.l + 72}" x2="${m.l + 72}" y1="${yl - 11}" y2="${yl + 1}"/>` +
+         `<text class="g-leyenda" x="${m.l + 80}" y="${yl}">Mediana</text>` +
+         `<polygon class="g-media" points="${m.l + 160},${yl - 11} ${m.l + 166},${yl - 5} ${m.l + 160},${yl + 1} ${m.l + 154},${yl - 5}"/>` +
+         `<text class="g-leyenda" x="${m.l + 172}" y="${yl}">Media</text>`;
+
+    return s + "</svg>";
+  }
+
+  /* ---------- 19E. BARRAS HORIZONTALES (CUALITATIVAS) ---------- */
+
+  /** Gráfico de barras horizontales. items: [{ etq, val, pct }]. */
+  function svgBarrasH(items, v, n) {
+    const W = anchoGrafico(), movil = esMovil();
+    const m = { t: 58, r: movil ? 86 : 120, b: 78, l: movil ? 100 : 132 };
+    const rowH = movil ? 34 : 38, barH = movil ? 20 : 24;
+    const ph = items.length * rowH, H = m.t + ph + m.b;
+    const pw = W - m.l - m.r, y0 = m.t + ph;
+
+    const maxV = Math.max(1, ...items.map((i) => i.val));
+    const paso = Math.max(1, Math.round(ticksNice(0, maxV, 5).paso));
+    const xTop = Math.ceil(maxV / paso) * paso;
+    const sx = (val) => m.l + val / xTop * pw;
+
+    let s = svgAbrir(W, H, "Gráfico de barras horizontales", `${v.nombre} · n = ${n}`,
+      `Frecuencia absoluta y porcentaje de cada categoría de ${v.nombre}.`);
+
+    // Cuadrícula vertical y marcas del eje X (frecuencias enteras)
+    for (let t = 0; t <= xTop; t += paso) {
+      s += `<line class="g-rej" x1="${p1(sx(t))}" x2="${p1(sx(t))}" y1="${m.t}" y2="${y0}"/>` +
+           `<line class="g-eje" x1="${p1(sx(t))}" x2="${p1(sx(t))}" y1="${y0}" y2="${y0 + 5}"/>` +
+           `<text class="g-tick" x="${p1(sx(t))}" y="${y0 + 19}" text-anchor="middle">${t}</text>`;
+    }
+
+    // Barras con su etiqueta: frecuencia absoluta (porcentaje)
+    items.forEach((it, i) => {
+      const yc = m.t + i * rowH + rowH / 2;
+      const w = it.val / xTop * pw;
+      s += `<text class="g-cat" x="${m.l - 8}" y="${p1(yc + 4)}" text-anchor="end">${esc(it.etq)}</text>`;
+      if (it.val > 0) {
+        s += `<rect class="g-barra" x="${m.l}" y="${p1(yc - barH / 2)}" width="${p1(w)}" height="${barH}">` +
+             `<title>${esc(it.etq)}: fi = ${it.val} (${fmt(it.pct, 2)} %)</title></rect>`;
+      }
+      s += `<text class="g-valor" x="${p1(m.l + w + 6)}" y="${p1(yc + 4)}" text-anchor="start">${it.val} (${fmt(it.pct, 1)} %)</text>`;
+    });
+
+    // Ejes y títulos
+    s += `<line class="g-eje" x1="${m.l}" x2="${W - m.r}" y1="${y0}" y2="${y0}"/>` +
+         `<line class="g-eje" x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${y0}"/>` +
+         `<text class="g-eje-t" x="${p1(m.l + pw / 2)}" y="${y0 + 44}" text-anchor="middle">Frecuencia absoluta (fi)</text>` +
+         `<text class="g-leyenda" x="${p1(m.l + pw / 2)}" y="${y0 + 62}" text-anchor="middle">Etiqueta de cada barra: fi (porcentaje)</text>` +
+         `<text class="g-eje-t" x="14" y="${p1(m.t + ph / 2)}" text-anchor="middle" transform="rotate(-90 14 ${p1(m.t + ph / 2)})">${esc(v.corto)}</text>`;
+
+    return s + "</svg>";
+  }
+
+  /* ---------- 19F. LECTURA AUTOMÁTICA ---------- */
+
+  /**
+   * Lectura automática de una variable cuantitativa:
+   * forma de la distribución (media vs. mediana) e interpretación del CV.
+   * u = función que escribe un valor con su unidad.
+   */
+  function htmlLecturaCuant(v, n, media, mediana, sd, cv, u) {
+    // --- Forma de la distribución ---
+    let forma, insF, textoF;
+    if (n < 2) {
+      forma = "No evaluable"; insF = "ins-ambar";
+      textoF = "Con un solo dato no se puede valorar la forma de la distribución.";
+    } else if (!(sd > 0)) {
+      forma = "Sin variación"; insF = "ins-verde";
+      textoF = "Todos los datos son iguales, por lo que la media y la mediana coinciden y no hay sesgo.";
+    } else {
+      const dif = media - mediana;
+      const rel = Math.abs(dif) / sd * 100;
+      const par = `Media = ${u(media)}; mediana = ${u(mediana)}; diferencia = ${u(dif)} (${fmt(rel, 1)} % de la desviación estándar).`;
+      if (rel < 10) {
+        forma = "Distribución aproximadamente simétrica"; insF = "ins-verde";
+        textoF = `La media y la mediana son muy cercanas, así que los datos se reparten de forma equilibrada a ambos lados del centro. ${par}`;
+      } else if (dif > 0) {
+        forma = "Sesgo positivo (a la derecha)"; insF = "ins-ambar";
+        textoF = `La media es mayor que la mediana: unos pocos valores altos jalan el promedio hacia arriba y la cola larga queda a la derecha. ${par}`;
+      } else {
+        forma = "Sesgo negativo (a la izquierda)"; insF = "ins-ambar";
+        textoF = `La media es menor que la mediana: unos pocos valores bajos jalan el promedio hacia abajo y la cola larga queda a la izquierda. ${par}`;
+      }
+    }
+
+    // --- Coeficiente de variación ---
+    let nivel, insC, textoC;
+    if (n < 2 || !Number.isFinite(cv)) {
+      nivel = "No interpretable"; insC = "ins-ambar";
+      textoC = "El coeficiente de variación no se puede calcular (se requieren al menos 2 datos y una media distinta de cero).";
+    } else if (cv < 15) {
+      nivel = "Datos homogéneos"; insC = "ins-verde";
+      textoC = `CV = ${fmt(cv, 2)} % (menor de 15 %): ${esc(v.corto.toLowerCase())} varía poco respecto a su promedio.`;
+    } else if (cv < 30) {
+      nivel = "Variabilidad moderada"; insC = "ins-ambar";
+      textoC = `CV = ${fmt(cv, 2)} % (desde 15 % y menor de 30 %): hay una variación moderada respecto al promedio.`;
+    } else {
+      nivel = "Datos muy dispersos"; insC = "ins-rojo";
+      textoC = `CV = ${fmt(cv, 2)} % (30 % o más): los datos están muy dispersos y la media representa poco al conjunto.`;
+    }
+
+    return `<ul class="lectura">
+      <li><b>Forma de la distribución:</b><span class="insignia ${insF}">${forma}</span><br>${textoF}
+        <small>Criterio: se considera simétrica si |media − mediana| es menor que el 10 % de la desviación estándar.</small></li>
+      <li><b>Variabilidad:</b><span class="insignia ${insC}">${nivel}</span><br>${textoC}
+        <small>Escala: CV &lt; 15 % homogéneos · 15 % ≤ CV &lt; 30 % variabilidad moderada · CV ≥ 30 % muy dispersos.</small></li>
+    </ul>`;
+  }
+
+  /** Lectura automática de una variable cualitativa: categoría más frecuente. */
+  function htmlLecturaCual(v, items, n) {
+    const maxFi = Math.max(...items.map((i) => i.fi));
+    const top = items.filter((i) => i.fi === maxFi);
+    let texto;
+    if (top.length === 1) {
+      texto = `La categoría más frecuente es <b>${esc(top[0].cat)}</b>, con frecuencia absoluta f<sub>i</sub> = ${maxFi} ` +
+              `y un porcentaje de ${fmt(top[0].pct, 2)} % sobre los ${n} registro(s) analizados.`;
+    } else {
+      texto = `Hay empate entre ${top.length} categorías: ` +
+              top.map((i) => `<b>${esc(i.cat)}</b> (f<sub>i</sub> = ${i.fi}; ${fmt(i.pct, 2)} %)`).join("; ") +
+              `. Cada una concentra ${fmt(top[0].pct, 2)} % de los ${n} registro(s).`;
+    }
+    return `<ul class="lectura">
+      <li><b>Categoría más frecuente:</b><span class="insignia ins-verde">${top.length === 1 ? "Moda" : "Empate"}</span><br>${texto}</li>
+    </ul>`;
+  }
+
+  /* ---------- 19G. SECCIONES DE ANÁLISIS ---------- */
 
   /** Genera el HTML completo del análisis de una variable cuantitativa. */
   function htmlCuantitativa(v, datos) {
@@ -1722,13 +2104,22 @@ tbody tr.total td { font-weight: 700; background: rgba(233,162,59,.18); }
          <td data-label="Hi (%)" class="num">—</td>
        </tr>`;
 
-    const barras = htmlBarras(g.clases.map((c, j) => ({
-      etq: `[${fl(c.li)}; ${fl(c.ls)}${j === g.k - 1 ? "]" : ")"}`,
-      val: c.fi,
-      pct: c.hi
-    })));
-
     const unidadTxt = v.unidad === "$" ? "pesos colombianos ($)" : "minutos";
+
+    // --- NUEVO: gráficos SVG, resumen de cinco números + media y lectura automática ---
+    const est = { min, q1: q1.valor, me: mediana, q3: q3.valor, max, media };
+    const graficos =
+      `<div class="grafico-wrap">${svgHistograma(g, d, v, n)}</div>
+       <div class="grafico-wrap">${svgCaja(est, v, n)}</div>
+       <div class="kpis" style="margin-top:12px">
+         <div class="kpi"><span>Mínimo</span><b>${u(min)}</b></div>
+         <div class="kpi"><span>Q1</span><b>${u(q1.valor)}</b></div>
+         <div class="kpi"><span>Mediana</span><b>${u(mediana)}</b></div>
+         <div class="kpi"><span>Q3</span><b>${u(q3.valor)}</b></div>
+         <div class="kpi"><span>Máximo</span><b>${u(max)}</b></div>
+         <div class="kpi"><span>Media (x̄)</span><b>${u(media)}</b></div>
+       </div>`;
+    const lectura = htmlLecturaCuant(v, n, media, mediana, sd, cv, u);
 
     return `
       <div class="kpis">
@@ -1766,7 +2157,12 @@ tbody tr.total td { font-weight: 700; background: rgba(233,162,59,.18); }
         </table>
       </div>
       <p class="an-nota">Si la amplitud se redondea hacia arriba, las últimas clases pueden quedar con frecuencia cero.</p>
-      ${barras}`;
+
+      <h3 class="an-sub">Gráficos</h3>
+      ${graficos}
+
+      <h3 class="an-sub">Lectura automática</h3>
+      ${lectura}`;
   }
 
   /** Genera el HTML completo del análisis de una variable cualitativa. */
@@ -1808,7 +2204,9 @@ tbody tr.total td { font-weight: 700; background: rgba(233,162,59,.18); }
       ? `La categoría más frecuente es <b>${esc(modales[0])}</b> con ${maxFi} registro(s) (${fmt(maxFi / n * 100, 2)} %).`
       : `Hay empate entre las categorías más frecuentes: <b>${modales.map(esc).join("; ")}</b>, con ${maxFi} registro(s) cada una (${fmt(maxFi / n * 100, 2)} % cada una).`;
 
-    const barras = htmlBarras(items.map((it) => ({ etq: String(it.cat), val: it.fi, pct: it.pct })));
+    // NUEVO: gráfico SVG de barras horizontales y lectura automática
+    const grafico = svgBarrasH(items.map((it) => ({ etq: String(it.cat), val: it.fi, pct: it.pct })), v, n);
+    const lectura = htmlLecturaCual(v, items, n);
 
     return `
       <div class="kpis">
@@ -1834,7 +2232,12 @@ tbody tr.total td { font-weight: 700; background: rgba(233,162,59,.18); }
         </table>
       </div>
       <p class="an-nota">${textoModal}${v.tipo === "Cualitativa ordinal" ? " La variable es ordinal: las categorías se muestran de menor a mayor satisfacción." : ""}</p>
-      ${barras}`;
+
+      <h3 class="an-sub">Gráfico</h3>
+      <div class="grafico-wrap">${grafico}</div>
+
+      <h3 class="an-sub">Lectura automática</h3>
+      ${lectura}`;
   }
 
   /* ---------- 20. REFRESCO DE LA PESTAÑA ---------- */
@@ -1892,6 +2295,16 @@ tbody tr.total td { font-weight: 700; background: rgba(233,162,59,.18); }
     // Al abrir la pestaña se recalcula con los registros más recientes
     document.querySelector('nav.tabs button[data-tab="analisis"]')
       .addEventListener("click", refrescarAnalisis);
+
+    // Al cambiar entre vista de celular y de computador (o girar el teléfono)
+    // se vuelven a dibujar los gráficos con las medidas adecuadas
+    let modoMovil = esMovil();
+    window.addEventListener("resize", () => {
+      if (esMovil() !== modoMovil) {
+        modoMovil = esMovil();
+        refrescarAnalisis();
+      }
+    });
 
     refrescarAnalisis();
   }
