@@ -1,4 +1,3 @@
-# estadiapp-unipaz-grupo1
 <!DOCTYPE html>
 <html lang="es-CO">
 <head>
@@ -155,11 +154,14 @@ input:focus, select:focus {
   transition: filter .2s, transform .05s;
 }
 .btn:active { transform: scale(.98); }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
 .btn-primario { background: var(--verde); color: #fff; }
 .btn-primario:hover { filter: brightness(1.08); }
 .btn-sec { background: #e6ebf2; color: var(--azul); }
 .btn-sec:hover { filter: brightness(.96); }
 .btn-peligro { background: var(--error); color: #fff; }
+.btn-ambar { background: var(--ambar); color: var(--azul); }
+.btn-ambar:hover { filter: brightness(1.05); }
 .btn-del {
   background: transparent; color: var(--error);
   border: 1.5px solid var(--error);
@@ -260,6 +262,40 @@ dialog .acciones { justify-content: flex-end; margin-top: 0; }
 #toast.visible { transform: translateX(-50%) translateY(0); opacity: 1; }
 
 footer { text-align: center; color: var(--gris); font-size: .8rem; padding: 0 12px 24px; }
+
+/* ==========================================================
+   7. HERRAMIENTAS DE DATOS (exportar, importar y respaldo)
+   ========================================================== */
+.datos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+.datos-bloque {
+  border: 1.5px solid var(--borde);
+  border-radius: var(--radio);
+  padding: 14px;
+  background: #fbfcfe;
+}
+.datos-bloque h3 { color: var(--azul); font-size: 1rem; margin-bottom: 4px; }
+.datos-bloque p { color: var(--gris); font-size: .83rem; margin-bottom: 10px; }
+.datos-bloque .acciones { margin-top: 0; }
+.datos-bloque .btn { padding: 9px 16px; font-size: .92rem; }
+
+.msg {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border-left: 5px solid var(--verde);
+  background: rgba(42,157,143,.10);
+  color: var(--texto);
+  font-size: .92rem;
+}
+.msg[hidden] { display: none; }
+.msg.warn { border-left-color: var(--ambar); background: rgba(233,162,59,.16); }
+.msg.err  { border-left-color: var(--error); background: rgba(192,57,43,.09); }
+.msg ul { margin: 6px 0 0 20px; }
+.msg li { margin-bottom: 2px; }
 </style>
 </head>
 <body>
@@ -368,6 +404,41 @@ footer { text-align: center; color: var(--gris); font-size: .8rem; padding: 0 12
       </form>
     </div>
 
+    <!-- ======================================================
+         HERRAMIENTAS DE DATOS: CSV Y RESPALDO JSON
+         ====================================================== -->
+    <div class="card">
+      <h2>Exportar, importar y respaldo</h2>
+      <p class="sub">Lleva tus datos a Excel, únelos con los de otros compañeros o guarda una copia de seguridad.</p>
+
+      <div class="datos-grid">
+        <div class="datos-bloque">
+          <h3>📤 Excel (CSV)</h3>
+          <p>Separador «;», coma decimal y codificación UTF-8 con BOM, listo para Excel en español. Al importar, los registros se agregan a los actuales y los repetidos se omiten.</p>
+          <div class="acciones">
+            <button type="button" class="btn btn-primario" id="btn-exportar-csv">Exportar CSV</button>
+            <button type="button" class="btn btn-sec" id="btn-importar-csv">Importar CSV</button>
+          </div>
+        </div>
+
+        <div class="datos-bloque">
+          <h3>🛟 Respaldo (JSON)</h3>
+          <p>Descarga todos los registros en un archivo y restáuralos cuando quieras. Podrás combinarlos con los actuales o reemplazarlos.</p>
+          <div class="acciones">
+            <button type="button" class="btn btn-ambar" id="btn-exportar-json">Descargar respaldo</button>
+            <button type="button" class="btn btn-sec" id="btn-importar-json">Restaurar respaldo</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Selectores de archivo ocultos -->
+      <input type="file" id="file-csv" accept=".csv,text/csv" hidden>
+      <input type="file" id="file-json" accept=".json,application/json" hidden>
+
+      <!-- Resultado de la última operación -->
+      <div id="msg-datos" class="msg" role="status" aria-live="polite" hidden></div>
+    </div>
+
     <div class="card">
       <div class="tabla-cab">
         <div>
@@ -465,6 +536,17 @@ footer { text-align: center; color: var(--gris); font-size: .8rem; padding: 0 12
   <div class="acciones">
     <button class="btn btn-sec" id="modal-cancelar">Cancelar</button>
     <button class="btn btn-peligro" id="modal-ok">Sí, eliminar</button>
+  </div>
+</dialog>
+
+<!-- Modal para restaurar un respaldo JSON -->
+<dialog id="modal-restaurar">
+  <h3>Restaurar respaldo</h3>
+  <p id="restaurar-texto"></p>
+  <div class="acciones">
+    <button class="btn btn-sec" id="restaurar-cancelar">Cancelar</button>
+    <button class="btn btn-peligro" id="restaurar-reemplazar">Reemplazar todo</button>
+    <button class="btn btn-primario" id="restaurar-unir">Combinar (recomendado)</button>
   </div>
 </dialog>
 
@@ -750,7 +832,525 @@ footer { text-align: center; color: var(--gris); font-size: .8rem; padding: 0 12
     if (e.target === modal) { idPendienteEliminar = null; modal.close(); }
   });
 
-  /* ---------- 10. INICIO ---------- */
+  /* ==========================================================
+     NUEVO: EXPORTAR / IMPORTAR CSV Y RESPALDO JSON
+     ========================================================== */
+
+  /* ---------- 10. CONSTANTES Y UTILIDADES DE DATOS ---------- */
+
+  // Columnas del CSV, en el orden en que se exportan
+  const ENCABEZADOS_CSV = [
+    "Fecha", "Hora", "Franja horaria", "Cafetería",
+    "Tiempo en fila (min)", "Valor de compra ($)", "Producto principal", "Satisfacción"
+  ];
+  const APP_NOMBRE = "EstadíApp UNIPAZ";   // identifica los respaldos JSON propios
+  const VERSION_RESPALDO = 1;
+  const MAX_ARCHIVO_BYTES = 5 * 1024 * 1024; // 5 MB
+  const MAX_REGISTROS_IMPORTAR = 20000;
+
+  let ocupado = false;          // evita procesar dos importaciones a la vez
+  let jsonPendiente = null;     // registros validados a la espera de la decisión del usuario
+
+  /** Minúsculas, sin tildes y sin espacios sobrantes (para comparar textos). */
+  const sinAcentos = (s) =>
+    String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, " ").trim().toLowerCase();
+
+  const ENCABEZADOS_NORM = ENCABEZADOS_CSV.map(sinAcentos);
+
+  /** Genera un identificador único para un registro. */
+  const nuevoId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+  /** Firma de un registro: sirve para detectar duplicados al unir datos. */
+  const firma = (r) =>
+    [r.fecha, r.hora, r.cafeteria, r.tiempo, r.valor, r.producto, r.satisfaccion].join("|");
+
+  /** Muestra el resultado de la última operación debajo de los botones. */
+  function mostrarMensaje(tipo, titulo, lineas) {
+    const box = $("msg-datos");
+    box.className = "msg " + tipo;
+    box.innerHTML = `<b>${esc(titulo)}</b>` +
+      (lineas && lineas.length ? "<ul>" + lineas.map((l) => `<li>${esc(l)}</li>`).join("") + "</ul>" : "");
+    box.hidden = false;
+  }
+
+  /** Descarga un archivo de texto generado en el navegador. */
+  function descargarArchivo(nombre, contenido, tipoMime) {
+    const blob = new Blob([contenido], { type: tipoMime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nombre;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  /** Lee un archivo como texto: UTF-8 y, si falla, Windows-1252 (CSV guardado desde Excel). */
+  async function leerArchivoTexto(archivo) {
+    const buffer = await archivo.arrayBuffer();
+    let texto;
+    try {
+      texto = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+    } catch (e) {
+      texto = new TextDecoder("windows-1252").decode(buffer);
+    }
+    return texto.replace(/^\uFEFF/, ""); // quita el BOM si quedó
+  }
+
+  /** Verifica el tamaño del archivo. Devuelve un mensaje de error o null. */
+  function revisarArchivo(archivo) {
+    if (archivo.size === 0) return "El archivo está vacío.";
+    if (archivo.size > MAX_ARCHIVO_BYTES) return "El archivo supera el tamaño máximo permitido (5 MB).";
+    return null;
+  }
+
+  /* ---------- 11. NORMALIZACIÓN Y VALIDACIÓN DE REGISTROS IMPORTADOS ---------- */
+
+  /** Convierte AAAA-MM-DD o DD/MM/AAAA en AAAA-MM-DD. Devuelve null si no es válida. */
+  function parsearFecha(v) {
+    if (typeof v !== "string") return null;
+    const t = v.trim();
+    let a, m, d, r;
+    if ((r = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t))) { a = +r[1]; m = +r[2]; d = +r[3]; }
+    else if ((r = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t))) { d = +r[1]; m = +r[2]; a = +r[3]; }
+    else return null;
+    const f = new Date(a, m - 1, d);
+    if (f.getFullYear() !== a || f.getMonth() !== m - 1 || f.getDate() !== d) return null;
+    return `${a}-${dos(m)}-${dos(d)}`;
+  }
+
+  /** Convierte H:MM, HH:MM o HH:MM:SS en HH:MM. Devuelve null si no es válida. */
+  function parsearHora(v) {
+    if (typeof v !== "string") return null;
+    const r = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(v.trim());
+    if (!r) return null;
+    const h = +r[1], m = +r[2];
+    if (h > 23 || m > 59) return null;
+    return `${dos(h)}:${dos(m)}`;
+  }
+
+  /** Convierte texto con coma o punto decimal (o un número) en Number. NaN si no es válido. */
+  function aNumero(v) {
+    if (typeof v === "number") return Number.isFinite(v) ? v : NaN;
+    if (typeof v !== "string") return NaN;
+    const t = v.trim().replace(/\s/g, "");
+    if (!/^\d+([.,]\d+)?$/.test(t)) return NaN;
+    return parseFloat(t.replace(",", "."));
+  }
+
+  /**
+   * Valida un registro "crudo" con las mismas reglas del formulario.
+   * Devuelve { registro } si es válido o { error } con el motivo.
+   * La franja horaria no se toma del archivo: siempre se recalcula desde la hora.
+   */
+  function normalizarRegistro(c) {
+    if (!c || typeof c !== "object") return { error: "no es un registro válido" };
+
+    const fecha = parsearFecha(c.fecha);
+    if (!fecha) return { error: "fecha no válida (use AAAA-MM-DD o DD/MM/AAAA)" };
+    if (fecha < "2000-01-01") return { error: "la fecha es anterior al año 2000" };
+    if (fecha > fechaActual()) return { error: "la fecha no puede ser futura" };
+
+    const hora = parsearHora(c.hora);
+    if (!hora) return { error: "hora no válida (use HH:MM)" };
+    if (fecha === fechaActual() && hora > horaActual()) return { error: "la hora no puede ser futura" };
+
+    const cafeteria = typeof c.cafeteria === "string"
+      ? CAFETERIAS.find((x) => sinAcentos(x) === sinAcentos(c.cafeteria)) : null;
+    if (!cafeteria) return { error: "cafetería no válida (use Cafetería 1, 2 o 3)" };
+
+    const tiempo = aNumero(c.tiempo);
+    if (isNaN(tiempo)) return { error: "tiempo en fila no es un número válido" };
+    if (tiempo > TIEMPO_MAX) return { error: `el tiempo en fila supera ${TIEMPO_MAX} minutos` };
+
+    const valor = aNumero(c.valor);
+    if (isNaN(valor)) return { error: "valor de compra no es un número válido" };
+    if (!Number.isInteger(valor)) return { error: "el valor de compra debe ser en pesos enteros" };
+    if (valor <= 0) return { error: "el valor de compra debe ser mayor que cero" };
+    if (valor > VALOR_MAX) return { error: `el valor de compra supera ${formatoPesos(VALOR_MAX)}` };
+
+    const producto = typeof c.producto === "string"
+      ? PRODUCTOS.find((x) => sinAcentos(x) === sinAcentos(c.producto)) : null;
+    if (!producto) return { error: "producto no válido" };
+
+    const satisfaccion = aNumero(c.satisfaccion);
+    if (!Number.isInteger(satisfaccion) || satisfaccion < 1 || satisfaccion > 5)
+      return { error: "satisfacción debe ser un entero de 1 a 5" };
+
+    return {
+      registro: {
+        id: nuevoId(), fecha, hora, franja: franjaCorta(hora),
+        cafeteria, tiempo, valor, producto, satisfaccion
+      }
+    };
+  }
+
+  /* ---------- 12. UNIÓN SIN DUPLICADOS ---------- */
+
+  /**
+   * Separa los candidatos en nuevos y duplicados SIN modificar los datos actuales.
+   * Un candidato es duplicado si ya existe un registro idéntico (se cuentan las
+   * repeticiones, así dos registros idénticos legítimos no se pierden).
+   */
+  function particionar(candidatos) {
+    const conteo = new Map();
+    registros.forEach((r) => {
+      const k = firma(r);
+      conteo.set(k, (conteo.get(k) || 0) + 1);
+    });
+    const nuevos = [];
+    let duplicados = 0;
+    candidatos.forEach((r) => {
+      const k = firma(r);
+      const n = conteo.get(k) || 0;
+      if (n > 0) { conteo.set(k, n - 1); duplicados++; }
+      else nuevos.push(r);
+    });
+    return { nuevos, duplicados };
+  }
+
+  /** Agrega los candidatos a los registros existentes. Devuelve { agregados, duplicados }. */
+  function unirRegistros(candidatos) {
+    const { nuevos, duplicados } = particionar(candidatos);
+    if (nuevos.length) {
+      registros = registros.concat(nuevos);
+      guardarRegistros();
+      renderizar();
+    }
+    return { agregados: nuevos.length, duplicados };
+  }
+
+  /* ---------- 13. EXPORTAR / IMPORTAR CSV ---------- */
+
+  /** Escapa una celda según las reglas del CSV (separador ;). */
+  function celdaCSV(v) {
+    const s = String(v);
+    return /[;"\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  /** Exporta los registros a CSV compatible con Excel en español. */
+  function exportarCSV() {
+    if (!registros.length) { avisar("⚠️ No hay registros para exportar."); return; }
+
+    const lineas = [ENCABEZADOS_CSV.map(celdaCSV).join(";")];
+    registros.forEach((r) => {
+      lineas.push([
+        r.fecha,
+        r.hora,
+        r.franja,
+        r.cafeteria,
+        String(r.tiempo).replace(".", ","),   // coma decimal
+        r.valor,
+        r.producto,
+        r.satisfaccion
+      ].map(celdaCSV).join(";"));
+    });
+
+    // "\uFEFF" = BOM UTF-8, para que Excel muestre bien las tildes y la ñ
+    const contenido = "\uFEFF" + lineas.join("\r\n") + "\r\n";
+    const nombre = `estadiapp_unipaz_registros_${fechaActual()}.csv`;
+    descargarArchivo(nombre, contenido, "text/csv;charset=utf-8;");
+    mostrarMensaje("ok", `CSV exportado: ${registros.length} registros.`,
+      [`Archivo: ${nombre}`, "Formato: separador «;», coma decimal, UTF-8 con BOM."]);
+    avisar("📤 CSV exportado.");
+  }
+
+  /**
+   * Analiza un texto CSV. Devuelve filas { n, celdas } donde n es el número de fila del archivo.
+   * Soporta comillas, comillas dobles escapadas y saltos de línea dentro de celdas.
+   */
+  function parsearCSV(texto, sep) {
+    const filas = [];
+    let fila = [], campo = "", entreComillas = false;
+    const cerrarFila = () => {
+      fila.push(campo);
+      filas.push({ n: filas.length + 1, celdas: fila });
+      fila = []; campo = "";
+    };
+    for (let i = 0; i < texto.length; i++) {
+      const c = texto[i];
+      if (entreComillas) {
+        if (c === '"') {
+          if (texto[i + 1] === '"') { campo += '"'; i++; }
+          else entreComillas = false;
+        } else campo += c;
+      } else if (c === '"') {
+        entreComillas = true;
+      } else if (c === sep) {
+        fila.push(campo); campo = "";
+      } else if (c === "\n" || c === "\r") {
+        if (c === "\r" && texto[i + 1] === "\n") i++;
+        cerrarFila();
+      } else {
+        campo += c;
+      }
+    }
+    if (campo !== "" || fila.length) cerrarFila();
+    // Descarta filas totalmente vacías
+    return filas.filter((f) => f.celdas.some((x) => x.trim() !== ""));
+  }
+
+  /** Importa un CSV generado por la aplicación y lo une a los registros existentes. */
+  async function importarCSV(archivo) {
+    const problema = revisarArchivo(archivo);
+    if (problema) { mostrarMensaje("err", "No se pudo importar el CSV.", [problema]); return; }
+
+    const texto = await leerArchivoTexto(archivo);
+
+    // Detecta el separador mirando la primera línea (Excel en español usa «;»)
+    const primera = texto.split(/\r?\n/)[0] || "";
+    const nPuntoComa = (primera.match(/;/g) || []).length;
+    const nComa = (primera.match(/,/g) || []).length;
+    const sep = nPuntoComa >= nComa ? ";" : ",";
+
+    const filas = parsearCSV(texto, sep);
+    if (!filas.length) {
+      mostrarMensaje("err", "No se pudo importar el CSV.", ["El archivo no contiene datos."]);
+      return;
+    }
+
+    // --- Comprobar que las columnas coincidan ---
+    const encabezado = filas[0].celdas.map(sinAcentos);
+    const faltan = ENCABEZADOS_CSV.filter((_, i) => !encabezado.includes(ENCABEZADOS_NORM[i]));
+    const sobran = filas[0].celdas.filter((_, i) => !ENCABEZADOS_NORM.includes(encabezado[i]));
+    if (faltan.length || sobran.length || encabezado.length !== ENCABEZADOS_CSV.length) {
+      const det = ["Las columnas del archivo no coinciden con las de EstadíApp UNIPAZ."];
+      if (faltan.length) det.push("Faltan: " + faltan.join(", ") + ".");
+      if (sobran.length) det.push("Columnas no reconocidas: " + sobran.map((s) => s.trim()).join(", ") + ".");
+      det.push("Usa un archivo creado con el botón «Exportar CSV».");
+      mostrarMensaje("err", "No se pudo importar el CSV.", det);
+      return;
+    }
+    // Posición de cada columna (permite que estén en otro orden)
+    const pos = ENCABEZADOS_NORM.map((n) => encabezado.indexOf(n));
+
+    const datos = filas.slice(1);
+    if (!datos.length) {
+      mostrarMensaje("err", "No se pudo importar el CSV.", ["El archivo solo tiene encabezados, sin registros."]);
+      return;
+    }
+    if (datos.length > MAX_REGISTROS_IMPORTAR) {
+      mostrarMensaje("err", "No se pudo importar el CSV.",
+        [`El archivo tiene más de ${MAX_REGISTROS_IMPORTAR} registros.`]);
+      return;
+    }
+
+    // --- Validar TODAS las filas antes de agregar alguna ---
+    const validos = [], errores = [];
+    datos.forEach((f) => {
+      if (f.celdas.length !== ENCABEZADOS_CSV.length) {
+        errores.push(`Fila ${f.n}: tiene ${f.celdas.length} columnas y se esperaban ${ENCABEZADOS_CSV.length}.`);
+        return;
+      }
+      const v = (i) => f.celdas[pos[i]];
+      const res = normalizarRegistro({
+        fecha: v(0), hora: v(1), /* franja (2) se recalcula */ cafeteria: v(3),
+        tiempo: v(4), valor: v(5), producto: v(6), satisfaccion: v(7)
+      });
+      if (res.error) errores.push(`Fila ${f.n}: ${res.error}.`);
+      else validos.push(res.registro);
+    });
+
+    if (errores.length) {
+      const det = errores.slice(0, 5);
+      if (errores.length > 5) det.push(`… y ${errores.length - 5} errores más.`);
+      det.push("No se importó ningún registro. Corrige el archivo e inténtalo de nuevo.");
+      mostrarMensaje("err", `El CSV tiene ${errores.length} fila(s) con errores.`, det);
+      return;
+    }
+
+    // --- Unir con los existentes, omitiendo los que ya están ---
+    const { agregados, duplicados } = unirRegistros(validos);
+    const det = [];
+    if (duplicados) det.push(`${duplicados} registro(s) omitido(s) porque ya existían.`);
+    det.push(`Total actual: ${registros.length} registros.`);
+
+    if (agregados === 0) {
+      mostrarMensaje("warn", "No se importó ningún registro nuevo.", det);
+      avisar("ℹ️ Todos los registros del CSV ya existían.");
+    } else {
+      mostrarMensaje("ok", `Se importaron ${agregados} registro(s) desde el CSV.`, det);
+      avisar(`✅ ${agregados} registro(s) importado(s).`);
+    }
+  }
+
+  /* ---------- 14. RESPALDO JSON ---------- */
+
+  /** Descarga todos los registros en un archivo JSON. */
+  function exportarJSON() {
+    if (!registros.length) { avisar("⚠️ No hay registros para respaldar."); return; }
+
+    const respaldo = {
+      app: APP_NOMBRE,
+      version: VERSION_RESPALDO,
+      exportadoEl: new Date().toISOString(),
+      total: registros.length,
+      registros: registros
+    };
+    const nombre = `respaldo_estadiapp_unipaz_${fechaActual()}_${horaActual().replace(":", "")}.json`;
+    descargarArchivo(nombre, JSON.stringify(respaldo, null, 2), "application/json;charset=utf-8");
+    mostrarMensaje("ok", `Respaldo descargado: ${registros.length} registros.`, [`Archivo: ${nombre}`]);
+    avisar("🛟 Respaldo descargado.");
+  }
+
+  /** Lee y valida un respaldo JSON; si es correcto, pregunta cómo restaurarlo. */
+  async function prepararRestauracion(archivo) {
+    const problema = revisarArchivo(archivo);
+    if (problema) { mostrarMensaje("err", "No se pudo restaurar el respaldo.", [problema]); return; }
+
+    const texto = await leerArchivoTexto(archivo);
+    let datos;
+    try {
+      datos = JSON.parse(texto);
+    } catch (e) {
+      mostrarMensaje("err", "No se pudo restaurar el respaldo.", ["El archivo no es un JSON válido."]);
+      return;
+    }
+
+    // --- Validar la estructura ---
+    let lista;
+    if (Array.isArray(datos)) {
+      lista = datos;                                   // lista simple de registros
+    } else if (datos && typeof datos === "object") {
+      if (datos.app !== APP_NOMBRE) {
+        mostrarMensaje("err", "No se pudo restaurar el respaldo.",
+          ["El archivo no parece un respaldo de EstadíApp UNIPAZ."]);
+        return;
+      }
+      if (typeof datos.version === "number" && datos.version > VERSION_RESPALDO) {
+        mostrarMensaje("err", "No se pudo restaurar el respaldo.",
+          ["El respaldo fue creado con una versión más reciente de la aplicación."]);
+        return;
+      }
+      if (!Array.isArray(datos.registros)) {
+        mostrarMensaje("err", "No se pudo restaurar el respaldo.",
+          ["La estructura es incorrecta: falta la lista de registros."]);
+        return;
+      }
+      lista = datos.registros;
+    } else {
+      mostrarMensaje("err", "No se pudo restaurar el respaldo.", ["La estructura del archivo no es válida."]);
+      return;
+    }
+
+    if (!lista.length) {
+      mostrarMensaje("err", "No se pudo restaurar el respaldo.", ["El respaldo no contiene registros."]);
+      return;
+    }
+    if (lista.length > MAX_REGISTROS_IMPORTAR) {
+      mostrarMensaje("err", "No se pudo restaurar el respaldo.",
+        [`El respaldo tiene más de ${MAX_REGISTROS_IMPORTAR} registros.`]);
+      return;
+    }
+
+    // Valida cada registro: si hay alguno incorrecto no se restaura nada
+    const validos = [], errores = [];
+    lista.forEach((item, i) => {
+      const res = normalizarRegistro(item);
+      if (res.error) errores.push(`Registro ${i + 1}: ${res.error}.`);
+      else validos.push(res.registro);
+    });
+    if (errores.length) {
+      const det = errores.slice(0, 5);
+      if (errores.length > 5) det.push(`… y ${errores.length - 5} errores más.`);
+      det.push("No se restauró ningún registro.");
+      mostrarMensaje("err", `El respaldo tiene ${errores.length} registro(s) con errores.`, det);
+      return;
+    }
+
+    // Si no hay datos actuales, se restaura directamente
+    if (!registros.length) {
+      registros = validos;
+      guardarRegistros();
+      renderizar();
+      mostrarMensaje("ok", `Se restauraron ${validos.length} registro(s).`, [`Total actual: ${registros.length} registros.`]);
+      avisar("✅ Respaldo restaurado.");
+      return;
+    }
+
+    // Hay datos actuales: el usuario decide entre combinar o reemplazar
+    const { duplicados } = particionar(validos);
+    jsonPendiente = validos;
+    $("restaurar-texto").textContent =
+      `El respaldo tiene ${validos.length} registros válidos (${duplicados} ya existen en tu tabla). ` +
+      `Actualmente tienes ${registros.length}. «Combinar» agrega solo los nuevos y conserva todo lo actual; ` +
+      `«Reemplazar todo» borra los ${registros.length} registros actuales y deja únicamente los del respaldo.`;
+    $("modal-restaurar").showModal();
+  }
+
+  // Botones del cuadro de restauración (se enlazan una sola vez)
+  $("restaurar-cancelar").addEventListener("click", () => {
+    jsonPendiente = null;
+    $("modal-restaurar").close();
+    mostrarMensaje("warn", "Restauración cancelada.", ["Tus registros no se modificaron."]);
+  });
+
+  $("restaurar-unir").addEventListener("click", () => {
+    const candidatos = jsonPendiente;
+    jsonPendiente = null;
+    $("modal-restaurar").close();
+    if (!candidatos) return;
+    const { agregados, duplicados } = unirRegistros(candidatos);
+    const det = [];
+    if (duplicados) det.push(`${duplicados} registro(s) omitido(s) porque ya existían.`);
+    det.push(`Total actual: ${registros.length} registros.`);
+    if (agregados === 0) mostrarMensaje("warn", "No se agregó ningún registro nuevo.", det);
+    else mostrarMensaje("ok", `Se combinaron ${agregados} registro(s) del respaldo.`, det);
+    avisar("✅ Respaldo combinado.");
+  });
+
+  $("restaurar-reemplazar").addEventListener("click", () => {
+    const candidatos = jsonPendiente;
+    jsonPendiente = null;
+    $("modal-restaurar").close();
+    if (!candidatos) return;
+    registros = candidatos;
+    guardarRegistros();
+    renderizar();
+    mostrarMensaje("ok", `Se restauraron ${candidatos.length} registro(s), reemplazando los anteriores.`,
+      [`Total actual: ${registros.length} registros.`]);
+    avisar("✅ Respaldo restaurado.");
+  });
+
+  // Cerrar con clic fuera o con Esc equivale a cancelar
+  $("modal-restaurar").addEventListener("click", (e) => {
+    if (e.target === $("modal-restaurar")) $("modal-restaurar").close();
+  });
+  $("modal-restaurar").addEventListener("close", () => { jsonPendiente = null; });
+
+  /* ---------- 15. ENLACE DE BOTONES Y SELECTORES DE ARCHIVO ---------- */
+
+  /**
+   * Ejecuta una operación de archivo una sola vez, aunque el usuario haga doble clic.
+   * Se limpia el selector para poder elegir de nuevo el mismo archivo.
+   */
+  function manejarArchivo(input, operacion) {
+    input.addEventListener("change", async () => {
+      const archivo = input.files && input.files[0];
+      input.value = "";                 // permite volver a seleccionar el mismo archivo
+      if (!archivo) return;
+      if (ocupado) { avisar("⏳ Espera a que termine la operación en curso."); return; }
+      ocupado = true;
+      try {
+        await operacion(archivo);
+      } catch (e) {
+        mostrarMensaje("err", "Ocurrió un error al leer el archivo.", ["Verifica que sea un archivo válido e inténtalo de nuevo."]);
+      } finally {
+        ocupado = false;
+      }
+    });
+  }
+
+  $("btn-exportar-csv").addEventListener("click", exportarCSV);
+  $("btn-exportar-json").addEventListener("click", exportarJSON);
+  $("btn-importar-csv").addEventListener("click", () => $("file-csv").click());
+  $("btn-importar-json").addEventListener("click", () => $("file-json").click());
+  manejarArchivo($("file-csv"), importarCSV);
+  manejarArchivo($("file-json"), prepararRestauracion);
+
+  /* ---------- 16. INICIO ---------- */
   cargarRegistros();
   reiniciarFormulario();
   renderizar();
