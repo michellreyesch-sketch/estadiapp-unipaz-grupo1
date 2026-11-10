@@ -1,7 +1,3 @@
-index.html
-styles.css
-app.js
-README.md
 :root {
   --azul: #1F3A5F;
   --verde: #2A9D8F;
