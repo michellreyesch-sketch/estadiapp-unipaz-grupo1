@@ -296,9 +296,7 @@ footer { text-align: center; color: var(--gris); font-size: .8rem; padding: 0 12
 .msg.warn { border-left-color: var(--ambar); background: rgba(233,162,59,.16); }
 .msg.err  { border-left-color: var(--error); background: rgba(192,57,43,.09); }
 .msg ul { margin: 6px 0 0 20px; }
-.msg li { margin-bottom: 2px; }
-
-/* ==========================================================
+.msg li { margin-bottom: 2px; }/* ==========================================================
    8. PESTAÑA ANÁLISIS
    ========================================================== */
 .an-controles {
@@ -997,8 +995,7 @@ svg.grafico { display: block; width: 100%; max-width: 820px; height: auto; margi
   const MAX_ARCHIVO_BYTES = 5 * 1024 * 1024; // 5 MB
   const MAX_REGISTROS_IMPORTAR = 20000;
 
-  let ocupado = false;          // evita procesar dos importaciones a la vez
-  let jsonPendiente = null;     // registros validados a la espera de la decisión del usuario
+  let ocupado = false;          // evita procesar dos importaciones a la vez  let jsonPendiente = null;     // registros validados a la espera de la decisión del usuario
 
   /** Minúsculas, sin tildes y sin espacios sobrantes (para comparar textos). */
   const sinAcentos = (s) =>
@@ -1796,524 +1793,367 @@ svg.grafico { display: block; width: 100%; max-width: 820px; height: auto; margi
     // Caja (Q1 a Q3), mediana y media
     s += `<rect class="g-caja" x="${p1(xQ1)}" y="${yBox}" width="${p1(Math.max(xQ3 - xQ1, 0))}" height="${bh}"/>` +
          `<line class="g-med" x1="${p1(xMe)}" x2="${p1(xMe)}" y1="${yBox}" y2="${yBox + bh}"/>` +
-         `<polygon class="g-media" points="${p1(xMd)},${yMid - 9} ${p1(xMd + 9)},${yMid} ${p1(xMd)},${yMid + 9} ${p1(xMd - 9)},${yMid}"/>`;
-
-    // Etiquetas sobre la caja (se agrupan y se reparten en filas para que no se encimen)
-    const bruto = [
-      { x: xMin, t: "Mín", top: yMid - 11 },
-      { x: xQ1,  t: "Q1",  top: yBox },
-      { x: xMe,  t: "Me",  top: yBox },
-      { x: xQ3,  t: "Q3",  top: yBox },
-      { x: xMax, t: "Máx", top: yMid - 11 }
+         `<polygon class="g-media" points="${p1(xMd)},${yMid - 9} ${p1(xMd + 9)},${yMid} ${p1(xMd)},${yMid + 9} ${p1(xMd - 9)},${yMid}"/>`;    // Etiquetas de los cinco valores principales
+    const etiquetas = [
+      { x: xMin, y: yBox - 10, t: "Mín." },
+      { x: xQ1, y: yBox + bh + 14, t: "Q1" },
+      { x: xMe, y: yBox - 10, t: "Mediana" },
+      { x: xQ3, y: yBox + bh + 14, t: "Q3" },
+      { x: xMax, y: yBox - 10, t: "Máx." }
     ];
-    const grupos = [];
-    bruto.forEach((it) => {
-      const gp = grupos.find((q) => Math.abs(q.x - it.x) < 3);
-      if (gp) { gp.t += "/" + it.t; gp.top = Math.min(gp.top, it.top); }
-      else grupos.push({ x: it.x, t: it.t, top: it.top });
+    etiquetas.forEach((e) => {
+      s += `<text class="g-etq" x="${p1(e.x)}" y="${e.y}" text-anchor="middle">${e.t}</text>`;
     });
-    const ult = [{ x: -999, w: 0 }, { x: -999, w: 0 }, { x: -999, w: 0 }];
-    grupos.forEach((q) => {
-      const w = q.t.length * 7 + 8;
-      let fila = -1, mejor = -Infinity;
-      ult.forEach((u, i) => {
-        const dist = (q.x - u.x) - (w + u.w) / 2;
-        if (fila < 0 && dist >= 0) fila = i;
-        if (dist > mejor) { mejor = dist; if (fila < 0) fila = -2 - i; }
-      });
-      if (fila < 0) fila = -fila - 2;     // sin espacio libre: se usa la fila con más holgura
-      ult[fila] = { x: q.x, w };
-      const yt = yBox - 12 - fila * 15;
-      s += `<line class="g-guia" x1="${p1(q.x)}" x2="${p1(q.x)}" y1="${yt + 3}" y2="${q.top}"/>` +
-           `<text class="g-etq" x="${p1(q.x)}" y="${yt}" text-anchor="middle">${q.t}</text>`;
-    });
-    // Etiqueta de la media, debajo de la caja
-    s += `<line class="g-guia" x1="${p1(xMd)}" x2="${p1(xMd)}" y1="${yMid + 9}" y2="${yBox + bh + 3}"/>` +
-         `<text class="g-etq" x="${p1(xMd)}" y="${yBox + bh + 15}" text-anchor="middle">x̄</text>`;
 
-    // Títulos de los ejes
-    s += `<text class="g-eje-t" x="${p1(m.l + pw / 2)}" y="${yEje + 44}" text-anchor="middle">${esc(v.nombre)}</text>` +
-         `<text class="g-eje-t" x="14" y="${yMid}" text-anchor="middle" transform="rotate(-90 14 ${yMid})">${esc(v.corto)}</text>`;
-
-    // Leyenda
-    const yl = yEje + 66;
-    s += `<rect class="g-caja" x="${m.l}" y="${yl - 10}" width="16" height="11"/>` +
-         `<text class="g-leyenda" x="${m.l + 21}" y="${yl}">Q1–Q3</text>` +
-         `<line class="g-med" x1="${m.l + 72}" x2="${m.l + 72}" y1="${yl - 11}" y2="${yl + 1}"/>` +
-         `<text class="g-leyenda" x="${m.l + 80}" y="${yl}">Mediana</text>` +
-         `<polygon class="g-media" points="${m.l + 160},${yl - 11} ${m.l + 166},${yl - 5} ${m.l + 160},${yl + 1} ${m.l + 154},${yl - 5}"/>` +
-         `<text class="g-leyenda" x="${m.l + 172}" y="${yl}">Media</text>`;
+    // Leyenda de la media
+    s += `<polygon class="g-media" points="${p1(m.l + 8)},${yEje + 43} ${p1(m.l + 16)},${yEje + 51} ${p1(m.l + 8)},${yEje + 59} ${p1(m.l)},${yEje + 51}"/>` +
+         `<text class="g-leyenda" x="${m.l + 22}" y="${yEje + 55}">Media</text>` +
+         `<text class="g-eje-t" x="${p1(m.l + pw / 2)}" y="${H - 5}" text-anchor="middle">${esc(v.nombre)}</text>`;
 
     return s + "</svg>";
   }
 
-  /* ---------- 19E. BARRAS HORIZONTALES (CUALITATIVAS) ---------- */
+  /* ---------- 19E. GRÁFICO DE BARRAS HORIZONTALES ---------- */
 
-  /** Gráfico de barras horizontales. items: [{ etq, val, pct }]. */
+  /** Barras horizontales SVG para una variable cualitativa. */
   function svgBarrasH(items, v, n) {
     const W = anchoGrafico(), movil = esMovil();
-    const m = { t: 58, r: movil ? 86 : 120, b: 78, l: movil ? 100 : 132 };
-    const rowH = movil ? 34 : 38, barH = movil ? 20 : 24;
-    const ph = items.length * rowH, H = m.t + ph + m.b;
-    const pw = W - m.l - m.r, y0 = m.t + ph;
+    const m = { t: 58, r: movil ? 48 : 70, b: 48, l: movil ? 112 : 190 };
+    const altoFila = movil ? 36 : 40;
+    const H = m.t + items.length * altoFila + m.b;
+    const pw = W - m.l - m.r;
+    const max = Math.max(1, ...items.map((i) => i.fi));
+    const tk = ticksNice(0, max, 5);
+    const yBase = m.t + items.length * altoFila;
 
-    const maxV = Math.max(1, ...items.map((i) => i.val));
-    const paso = Math.max(1, Math.round(ticksNice(0, maxV, 5).paso));
-    const xTop = Math.ceil(maxV / paso) * paso;
-    const sx = (val) => m.l + val / xTop * pw;
+    let s = svgAbrir(W, H, "Frecuencia por categoría", `${v.nombre} · n = ${n}`,
+      `Gráfico de barras horizontales con frecuencias absolutas y porcentajes para ${v.nombre}.`);
 
-    let s = svgAbrir(W, H, "Gráfico de barras horizontales", `${v.nombre} · n = ${n}`,
-      `Frecuencia absoluta y porcentaje de cada categoría de ${v.nombre}.`);
+    // Eje X y cuadrícula
+    tk.valores.forEach((t) => {
+      const x = m.l + t / max * pw;
+      s += `<line class="g-rej" x1="${p1(x)}" x2="${p1(x)}" y1="${m.t - 4}" y2="${yBase}"/>` +
+           `<text class="g-tick" x="${p1(x)}" y="${yBase + 18}" text-anchor="middle">${fmt(t, tk.dec)}</text>`;
+    });
+    s += `<line class="g-eje" x1="${m.l}" x2="${W - m.r}" y1="${yBase}" y2="${yBase}"/>`;
 
-    // Cuadrícula vertical y marcas del eje X (frecuencias enteras)
-    for (let t = 0; t <= xTop; t += paso) {
-      s += `<line class="g-rej" x1="${p1(sx(t))}" x2="${p1(sx(t))}" y1="${m.t}" y2="${y0}"/>` +
-           `<line class="g-eje" x1="${p1(sx(t))}" x2="${p1(sx(t))}" y1="${y0}" y2="${y0 + 5}"/>` +
-           `<text class="g-tick" x="${p1(sx(t))}" y="${y0 + 19}" text-anchor="middle">${t}</text>`;
-    }
-
-    // Barras con su etiqueta: frecuencia absoluta (porcentaje)
+    // Barras y etiquetas
     items.forEach((it, i) => {
-      const yc = m.t + i * rowH + rowH / 2;
-      const w = it.val / xTop * pw;
-      s += `<text class="g-cat" x="${m.l - 8}" y="${p1(yc + 4)}" text-anchor="end">${esc(it.etq)}</text>`;
-      if (it.val > 0) {
-        s += `<rect class="g-barra" x="${m.l}" y="${p1(yc - barH / 2)}" width="${p1(w)}" height="${barH}">` +
-             `<title>${esc(it.etq)}: fi = ${it.val} (${fmt(it.pct, 2)} %)</title></rect>`;
-      }
-      s += `<text class="g-valor" x="${p1(m.l + w + 6)}" y="${p1(yc + 4)}" text-anchor="start">${it.val} (${fmt(it.pct, 1)} %)</text>`;
+      const y = m.t + i * altoFila + 5;
+      const ancho = it.fi / max * pw;
+      const centro = y + 12;
+      s += `<text class="g-cat" x="${m.l - 8}" y="${centro + 4}" text-anchor="end">${esc(it.etq)}</text>` +
+           `<rect class="g-barra" x="${m.l}" y="${y}" width="${p1(ancho)}" height="24" rx="3">` +
+           `<title>${esc(it.etq)}: ${it.fi} registros (${fmt(it.pct, 1)} %)</title></rect>` +
+           `<text class="g-valor" x="${p1(m.l + ancho + 6)}" y="${centro + 4}">${it.fi} · ${fmt(it.pct, 1)} %</text>`;
     });
 
-    // Ejes y títulos
-    s += `<line class="g-eje" x1="${m.l}" x2="${W - m.r}" y1="${y0}" y2="${y0}"/>` +
-         `<line class="g-eje" x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${y0}"/>` +
-         `<text class="g-eje-t" x="${p1(m.l + pw / 2)}" y="${y0 + 44}" text-anchor="middle">Frecuencia absoluta (fi)</text>` +
-         `<text class="g-leyenda" x="${p1(m.l + pw / 2)}" y="${y0 + 62}" text-anchor="middle">Etiqueta de cada barra: fi (porcentaje)</text>` +
-         `<text class="g-eje-t" x="14" y="${p1(m.t + ph / 2)}" text-anchor="middle" transform="rotate(-90 14 ${p1(m.t + ph / 2)})">${esc(v.corto)}</text>`;
-
+    s += `<text class="g-eje-t" x="${p1(m.l + pw / 2)}" y="${H - 6}" text-anchor="middle">Frecuencia absoluta (fi)</text>`;
     return s + "</svg>";
   }
 
-  /* ---------- 19F. LECTURA AUTOMÁTICA ---------- */
+  /* ---------- 19F. LECTURA AUTOMÁTICA DE CUANTITATIVAS ---------- */
 
   /**
-   * Lectura automática de una variable cuantitativa:
-   * forma de la distribución (media vs. mediana) e interpretación del CV.
-   * u = función que escribe un valor con su unidad.
+   * Interpreta la forma de la distribución comparando media y mediana.
+   * También clasifica la dispersión mediante el coeficiente de variación.
    */
-  function htmlLecturaCuant(v, n, media, mediana, sd, cv, u) {
-    // --- Forma de la distribución ---
-    let forma, insF, textoF;
-    if (n < 2) {
-      forma = "No evaluable"; insF = "ins-ambar";
-      textoF = "Con un solo dato no se puede valorar la forma de la distribución.";
-    } else if (!(sd > 0)) {
-      forma = "Sin variación"; insF = "ins-verde";
-      textoF = "Todos los datos son iguales, por lo que la media y la mediana coinciden y no hay sesgo.";
+  function htmlLecturaCuant(est, v) {
+    const dif = est.media - est.mediana;
+    const tolerancia = Math.max(Math.abs(est.media), Math.abs(est.mediana), 1) * 0.01;
+    let forma, claseForma, detalleForma;
+
+    if (Math.abs(dif) <= tolerancia) {
+      forma = "Distribución aproximadamente simétrica";
+      claseForma = "ins-verde";
+      detalleForma = "La media y la mediana son muy cercanas. No se observa un sesgo marcado.";
+    } else if (dif > 0) {
+      forma = "Asimetría positiva (sesgo a la derecha)";
+      claseForma = "ins-ambar";
+      detalleForma = "La media es mayor que la mediana. Algunos valores altos pueden estar desplazando el promedio hacia la derecha.";
     } else {
-      const dif = media - mediana;
-      const rel = Math.abs(dif) / sd * 100;
-      const par = `Media = ${u(media)}; mediana = ${u(mediana)}; diferencia = ${u(dif)} (${fmt(rel, 1)} % de la desviación estándar).`;
-      if (rel < 10) {
-        forma = "Distribución aproximadamente simétrica"; insF = "ins-verde";
-        textoF = `La media y la mediana son muy cercanas, así que los datos se reparten de forma equilibrada a ambos lados del centro. ${par}`;
-      } else if (dif > 0) {
-        forma = "Sesgo positivo (a la derecha)"; insF = "ins-ambar";
-        textoF = `La media es mayor que la mediana: unos pocos valores altos jalan el promedio hacia arriba y la cola larga queda a la derecha. ${par}`;
-      } else {
-        forma = "Sesgo negativo (a la izquierda)"; insF = "ins-ambar";
-        textoF = `La media es menor que la mediana: unos pocos valores bajos jalan el promedio hacia abajo y la cola larga queda a la izquierda. ${par}`;
-      }
+      forma = "Asimetría negativa (sesgo a la izquierda)";
+      claseForma = "ins-ambar";
+      detalleForma = "La media es menor que la mediana. Algunos valores bajos pueden estar desplazando el promedio hacia la izquierda.";
     }
 
-    // --- Coeficiente de variación ---
-    let nivel, insC, textoC;
-    if (n < 2 || !Number.isFinite(cv)) {
-      nivel = "No interpretable"; insC = "ins-ambar";
-      textoC = "El coeficiente de variación no se puede calcular (se requieren al menos 2 datos y una media distinta de cero).";
-    } else if (cv < 15) {
-      nivel = "Datos homogéneos"; insC = "ins-verde";
-      textoC = `CV = ${fmt(cv, 2)} % (menor de 15 %): ${esc(v.corto.toLowerCase())} varía poco respecto a su promedio.`;
-    } else if (cv < 30) {
-      nivel = "Variabilidad moderada"; insC = "ins-ambar";
-      textoC = `CV = ${fmt(cv, 2)} % (desde 15 % y menor de 30 %): hay una variación moderada respecto al promedio.`;
+    let cvClase, cvTexto, cvDetalle;
+    if (est.cv < 15) {
+      cvClase = "ins-verde";
+      cvTexto = "Datos homogéneos";
+      cvDetalle = "El coeficiente de variación es menor del 15 %; los datos presentan poca dispersión relativa.";
+    } else if (est.cv < 30) {
+      cvClase = "ins-ambar";
+      cvTexto = "Dispersión moderada";
+      cvDetalle = "El coeficiente de variación está entre el 15 % y menos del 30 %; existe una variabilidad intermedia.";
     } else {
-      nivel = "Datos muy dispersos"; insC = "ins-rojo";
-      textoC = `CV = ${fmt(cv, 2)} % (30 % o más): los datos están muy dispersos y la media representa poco al conjunto.`;
+      cvClase = "ins-rojo";
+      cvTexto = "Datos muy dispersos";
+      cvDetalle = "El coeficiente de variación es del 30 % o superior; los datos presentan alta dispersión relativa.";
     }
 
-    return `<ul class="lectura">
-      <li><b>Forma de la distribución:</b><span class="insignia ${insF}">${forma}</span><br>${textoF}
-        <small>Criterio: se considera simétrica si |media − mediana| es menor que el 10 % de la desviación estándar.</small></li>
-      <li><b>Variabilidad:</b><span class="insignia ${insC}">${nivel}</span><br>${textoC}
-        <small>Escala: CV &lt; 15 % homogéneos · 15 % ≤ CV &lt; 30 % variabilidad moderada · CV ≥ 30 % muy dispersos.</small></li>
-    </ul>`;
-  }
-
-  /** Lectura automática de una variable cualitativa: categoría más frecuente. */
-  function htmlLecturaCual(v, items, n) {
-    const maxFi = Math.max(...items.map((i) => i.fi));
-    const top = items.filter((i) => i.fi === maxFi);
-    let texto;
-    if (top.length === 1) {
-      texto = `La categoría más frecuente es <b>${esc(top[0].cat)}</b>, con frecuencia absoluta f<sub>i</sub> = ${maxFi} ` +
-              `y un porcentaje de ${fmt(top[0].pct, 2)} % sobre los ${n} registro(s) analizados.`;
-    } else {
-      texto = `Hay empate entre ${top.length} categorías: ` +
-              top.map((i) => `<b>${esc(i.cat)}</b> (f<sub>i</sub> = ${i.fi}; ${fmt(i.pct, 2)} %)`).join("; ") +
-              `. Cada una concentra ${fmt(top[0].pct, 2)} % de los ${n} registro(s).`;
-    }
-    return `<ul class="lectura">
-      <li><b>Categoría más frecuente:</b><span class="insignia ins-verde">${top.length === 1 ? "Moda" : "Empate"}</span><br>${texto}</li>
-    </ul>`;
-  }
-
-  /* ---------- 19G. SECCIONES DE ANÁLISIS ---------- */
-
-  /** Genera el HTML completo del análisis de una variable cuantitativa. */
-  function htmlCuantitativa(v, datos) {
-    const n = datos.length;
-    const F = formateadores(v);
-    const d = datos.reduce((m, val) => Math.max(m, decimales(val)), 0);
-    const DEC = Math.max(2, Math.min(d, 4));          // decimales para mostrar
-    const f = (val) => fmt(val, DEC);
-    const u = (val) => F.u(val, DEC);
-    const u2 = (val) => F.u2(val, DEC);
-
-    const x = datos.slice().sort((a, b) => a - b);
-    const suma = x.reduce((a, b) => a + b, 0);
-    const media = suma / n;
-    const min = x[0], max = x[n - 1], R = max - min;
-
-    // --- Mediana ---
-    let mediana, calcMed;
-    if (n % 2 === 1) {
-      const m = (n + 1) / 2;
-      mediana = x[m - 1];
-      calcMed = `n = ${n} (impar) → x<sub>(${m})</sub> = ${f(mediana)}`;
-    } else {
-      const a = n / 2;
-      mediana = (x[a - 1] + x[a]) / 2;
-      calcMed = `n = ${n} (par) → (x<sub>(${a})</sub> + x<sub>(${a + 1})</sub>) / 2 = (${f(x[a - 1])} + ${f(x[a])}) / 2`;
-    }
-
-    // --- Moda(s) ---
-    const frec = new Map();
-    x.forEach((val) => frec.set(val, (frec.get(val) || 0) + 1));
-    const maxF = Math.max(...frec.values());
-    const modas = [...frec.keys()].filter((k2) => frec.get(k2) === maxF).sort((a, b) => a - b);
-    const sinModa = maxF === 1 || (frec.size > 1 && modas.length === frec.size);
-    let resModa, calcModa;
-    if (sinModa) {
-      resModa = "No hay moda";
-      calcModa = maxF === 1 ? "Ningún valor se repite (todas las frecuencias son 1)"
-                            : `Todos los valores distintos tienen la misma frecuencia (${maxF})`;
-    } else {
-      resModa = modas.map(u).join("; ");
-      const tipo = modas.length === 1 ? "unimodal" : (modas.length === 2 ? "bimodal" : "multimodal");
-      calcModa = `Frecuencia máxima = ${maxF} → distribución ${tipo}`;
-    }
-
-    // --- Varianza, desviación y coeficiente de variación ---
-    let scd = NaN, varianza = NaN, sd = NaN, cv = NaN;
-    if (n > 1) {
-      scd = x.reduce((a, val) => a + Math.pow(val - media, 2), 0);
-      varianza = scd / (n - 1);
-      sd = Math.sqrt(varianza);
-      cv = media !== 0 ? sd / Math.abs(media) * 100 : NaN;
-    }
-    const ND = "No definida (se requiere n ≥ 2)";
-
-    // --- Cuartiles (algoritmo CUARTIL.INC de Excel) ---
-    const cuartil = (p) => {
-      const pos = 1 + (n - 1) * p;
-      const i = Math.floor(pos + 1e-12);
-      const frac = pos - i;
-      const lo = x[i - 1];
-      const hi = x[Math.min(i, n - 1)];
-      return { pos, i, frac, lo, hi, valor: lo + frac * (hi - lo) };
-    };
-    const calcQ = (q, p) => {
-      let t = `pos = 1 + (${n} − 1)·${fmt(p, 2)} = ${fmt(q.pos, 2)} → x<sub>(${q.i})</sub> = ${f(q.lo)}`;
-      if (q.frac !== 0) {
-        t += `; x<sub>(${q.i + 1})</sub> = ${f(q.hi)}; Q = ${f(q.lo)} + ${fmt(q.frac, 2)}·(${f(q.hi)} − ${f(q.lo)})`;
-      }
-      return t;
-    };
-    const q1 = cuartil(0.25), q2 = cuartil(0.5), q3 = cuartil(0.75);
-    const ric = q3.valor - q1.valor;
-    const formulaQ = "Q<sub>k</sub> = x<sub>(j)</sub> + f·(x<sub>(j+1)</sub> − x<sub>(j)</sub>), con pos = 1 + (n − 1)·k/4; j = parte entera, f = parte decimal";
-
-    // --- Tabla de medidas: [medida, fórmula, cálculo, resultado] ---
-    const filas = [
-      ["Número de datos (n)", "n = cantidad de observaciones", `n = ${n}`, fmt(n, 0)],
-      ["Suma", "Σx<sub>i</sub> = x<sub>1</sub> + x<sub>2</sub> + … + x<sub>n</sub>", `Suma de los ${n} datos`, u(suma)],
-      ["Media", "x̄ = Σx<sub>i</sub> / n", `${f(suma)} / ${n}`, u(media)],
-      ["Mediana", "Me = x<sub>((n+1)/2)</sub> si n es impar; Me = (x<sub>(n/2)</sub> + x<sub>(n/2+1)</sub>) / 2 si n es par", calcMed, u(mediana)],
-      ["Moda", "Mo = valor(es) con mayor frecuencia absoluta", calcModa, resModa],
-      ["Mínimo", "x<sub>mín</sub> = menor valor", "Dato menor", u(min)],
-      ["Máximo", "x<sub>máx</sub> = mayor valor", "Dato mayor", u(max)],
-      ["Rango", "R = x<sub>máx</sub> − x<sub>mín</sub>", `${f(max)} − ${f(min)}`, u(R)],
-      ["Varianza muestral", "s² = Σ(x<sub>i</sub> − x̄)² / (n − 1)",
-        n > 1 ? `${f(scd)} / (${n} − 1)` : "—", n > 1 ? u2(varianza) : ND],
-      ["Desviación estándar muestral", "s = √s²",
-        n > 1 ? `√${f(varianza)}` : "—", n > 1 ? u(sd) : ND],
-      ["Coeficiente de variación", "CV = (s / x̄) · 100",
-        n > 1 && media !== 0 ? `(${f(sd)} / ${f(media)}) · 100` : "—",
-        n > 1 && media !== 0 ? fmt(cv, 2) + " %" : ND],
-      ["Q1 (primer cuartil)", formulaQ, calcQ(q1, 0.25), u(q1.valor)],
-      ["Q2 (segundo cuartil)", "Q<sub>2</sub> = Q<sub>k</sub> con k = 2 (coincide con la mediana)", calcQ(q2, 0.5), u(q2.valor)],
-      ["Q3 (tercer cuartil)", "Q<sub>3</sub> = Q<sub>k</sub> con k = 3", calcQ(q3, 0.75), u(q3.valor)],
-      ["Rango intercuartílico", "RIC = Q<sub>3</sub> − Q<sub>1</sub>", `${f(q3.valor)} − ${f(q1.valor)}`, u(ric)]
-    ];
-
-    const filasHtml = filas.map((r) =>
-      `<tr>
-         <td data-label="Medida"><b>${r[0]}</b></td>
-         <td data-label="Fórmula" class="fx">${r[1]}</td>
-         <td data-label="Cálculo" class="fx">${r[2]}</td>
-         <td data-label="Resultado" class="res">${r[3]}</td>
-       </tr>`).join("");
-
-    // --- Tabla de frecuencias agrupadas ---
-    const g = agruparDatos(x, d);
-    const fl = (val) => fmt(val, d);        // límites con los decimales de los datos
-    const fx = (val) => fmt(val, d + 1);    // marca de clase: un decimal más
-    const filasG = g.clases.map((c, j) =>
-      `<tr>
-         <td data-label="Clase">${j + 1}</td>
-         <td data-label="Li" class="num">${fl(c.li)}</td>
-         <td data-label="Ls" class="num">${fl(c.ls)}</td>
-         <td data-label="xi" class="num">${fx(c.xi)}</td>
-         <td data-label="fi" class="num">${c.fi}</td>
-         <td data-label="Fi" class="num">${c.Fi}</td>
-         <td data-label="hi (%)" class="num">${fmt(c.hi, 2)} %</td>
-         <td data-label="Hi (%)" class="num">${fmt(c.Hi, 2)} %</td>
-       </tr>`).join("");
-    const totalG = g.clases.reduce((a, c) => a + c.fi, 0);
-    const totalHi = g.clases.reduce((a, c) => a + c.hi, 0);
-    const filaTotalG =
-      `<tr class="total">
-         <td data-label="Clase">Total</td>
-         <td data-label="Li" class="num">—</td>
-         <td data-label="Ls" class="num">—</td>
-         <td data-label="xi" class="num">—</td>
-         <td data-label="fi" class="num">${totalG}</td>
-         <td data-label="Fi" class="num">—</td>
-         <td data-label="hi (%)" class="num">${fmt(totalHi, 2)} %</td>
-         <td data-label="Hi (%)" class="num">—</td>
-       </tr>`;
-
-    const unidadTxt = v.unidad === "$" ? "pesos colombianos ($)" : "minutos";
-
-    // --- NUEVO: gráficos SVG, resumen de cinco números + media y lectura automática ---
-    const est = { min, q1: q1.valor, me: mediana, q3: q3.valor, max, media };
-    const graficos =
-      `<div class="grafico-wrap">${svgHistograma(g, d, v, n)}</div>
-       <div class="grafico-wrap">${svgCaja(est, v, n)}</div>
-       <div class="kpis" style="margin-top:12px">
-         <div class="kpi"><span>Mínimo</span><b>${u(min)}</b></div>
-         <div class="kpi"><span>Q1</span><b>${u(q1.valor)}</b></div>
-         <div class="kpi"><span>Mediana</span><b>${u(mediana)}</b></div>
-         <div class="kpi"><span>Q3</span><b>${u(q3.valor)}</b></div>
-         <div class="kpi"><span>Máximo</span><b>${u(max)}</b></div>
-         <div class="kpi"><span>Media (x̄)</span><b>${u(media)}</b></div>
-       </div>`;
-    const lectura = htmlLecturaCuant(v, n, media, mediana, sd, cv, u);
-
+    const f = formateadores(v);
     return `
+      <h3 class="an-sub">Lectura automática</h3>
+      <ul class="lectura">
+        <li>
+          <b>${forma}</b>
+          <span class="insignia ${claseForma}">${dif > tolerancia ? "Sesgo positivo" : dif < -tolerancia ? "Sesgo negativo" : "Simetría"}</span>
+          <small>${detalleForma} Media: ${f.u(est.media)}; mediana: ${f.u(est.mediana)}.</small>
+        </li>
+        <li>
+          <b>${cvTexto}</b>
+          <span class="insignia ${cvClase}">CV = ${fmt(est.cv, 2)} %</span>
+          <small>${cvDetalle}</small>
+        </li>
+      </ul>`;
+  }
+
+  /* ---------- 19G. LECTURA AUTOMÁTICA DE CUALITATIVAS ---------- */
+
+  /** Identifica la categoría con mayor frecuencia y comunica su porcentaje. */
+  function htmlLecturaCual(items, v, n) {
+    if (!items.length || n === 0) return "";
+    const max = Math.max(...items.map((i) => i.fi));
+    const moda = items.filter((i) => i.fi === max);
+    const nombres = moda.map((i) => esc(i.etq)).join(", ");
+    const pct = max / n * 100;
+    const texto = moda.length > 1 ? "Las categorías más frecuentes son" : "La categoría más frecuente es";
+    return `
+      <h3 class="an-sub">Lectura automática</h3>
+      <ul class="lectura">
+        <li>
+          <b>${texto}: ${nombres}.</b>
+          <span class="insignia ins-verde">${max} registro(s) · ${fmt(pct, 1)} %</span>
+          <small>De los ${n} registros analizados para ${esc(v.nombre)}, esta categoría${moda.length > 1 ? " comparte la mayor frecuencia" : " presenta la mayor frecuencia"}.</small>
+        </li>
+      </ul>`;
+  }
+
+  /* ---------- 20. ANÁLISIS CUANTITATIVO ---------- */
+
+  /** Construye el análisis completo de una variable cuantitativa. */
+  function htmlCuantitativa(datos, v) {
+    const n = datos.length;
+    if (!n) return '<p class="vacio">No hay datos numéricos para analizar con los filtros seleccionados.</p>';
+
+    const x = datos.map((r) => Number(r[$("an-variable").value])).filter(Number.isFinite).sort((a, b) => a - b);
+    if (!x.length) return '<p class="vacio">No hay datos numéricos válidos para esta variable.</p>';
+
+    const suma = x.reduce((a, b) => a + b, 0);
+    const media = suma / x.length;
+    const mediana = x.length % 2
+      ? x[Math.floor(x.length / 2)]
+      : (x[x.length / 2 - 1] + x[x.length / 2]) / 2;
+
+    // Cuartiles por método de mitades (Tukey)
+    const mitadInf = x.slice(0, Math.floor(x.length / 2));
+    const mitadSup = x.slice(Math.ceil(x.length / 2));
+    const medianaLista = (a) => a.length % 2
+      ? a[Math.floor(a.length / 2)]
+      : a.length ? (a[a.length / 2 - 1] + a[a.length / 2]) / 2 : x[0];
+    const q1 = medianaLista(mitadInf);
+    const q3 = medianaLista(mitadSup);
+
+    const min = x[0], max = x[x.length - 1], rango = max - min;
+    const varianza = x.reduce((acc, z) => acc + Math.pow(z - media, 2), 0) / x.length;
+    const desviacion = Math.sqrt(varianza);
+    const cv = media !== 0 ? desviacion / Math.abs(media) * 100 : 0;
+    const d = Math.max(...x.map(decimales));
+    const g = agruparDatos(x, d);
+
+    const est = { media, mediana, q1, q3, min, max, rango, varianza, desviacion, cv };
+    const f = formateadores(v);
+
+    let h = `
+      <div class="an-contexto">
+        <b>${esc(v.nombre)}</b> · ${esc(v.tipo)} · ${n} observación(es) válidas.
+      </div>
       <div class="kpis">
-        <div class="kpi"><span>Datos (n)</span><b>${fmt(n, 0)}</b></div>
-        <div class="kpi"><span>Media</span><b>${u(media)}</b></div>
-        <div class="kpi"><span>Mediana</span><b>${u(mediana)}</b></div>
-        <div class="kpi"><span>Desviación estándar</span><b>${n > 1 ? u(sd) : "—"}</b></div>
-        <div class="kpi"><span>Coef. de variación</span><b>${n > 1 && media !== 0 ? fmt(cv, 2) + " %" : "—"}</b></div>
+        <div class="kpi"><span>Media</span><b>${f.u(media)}</b></div>
+        <div class="kpi"><span>Mediana</span><b>${f.u(mediana)}</b></div>
+        <div class="kpi"><span>Desviación estándar</span><b>${f.u(desviacion)}</b></div>
+        <div class="kpi"><span>Coeficiente de variación</span><b>${fmt(cv, 2)} %</b></div>
       </div>
 
-      <h3 class="an-sub">Medidas descriptivas</h3>
+      <h3 class="an-sub">Medidas de posición y dispersión</h3>
       <div class="tabla-wrap">
         <table>
-          <thead><tr><th>Medida</th><th>Fórmula</th><th>Cálculo</th><th>Resultado</th></tr></thead>
-          <tbody>${filasHtml}</tbody>
+          <thead><tr><th>Medida</th><th>Resultado</th><th>Interpretación</th></tr></thead>
+          <tbody>
+            <tr><td>Mínimo</td><td class="res num">${f.u(min)}</td><td>Valor más pequeño.</td></tr>
+            <tr><td>Primer cuartil (Q1)</td><td class="res num">${f.u(q1)}</td><td>El 25 % de los datos está en este valor o por debajo.</td></tr>
+            <tr><td>Mediana (Q2)</td><td class="res num">${f.u(mediana)}</td><td>El 50 % de los datos está en este valor o por debajo.</td></tr>
+            <tr><td>Tercer cuartil (Q3)</td><td class="res num">${f.u(q3)}</td><td>El 75 % de los datos está en este valor o por debajo.</td></tr>
+            <tr><td>Máximo</td><td class="res num">${f.u(max)}</td><td>Valor más grande.</td></tr>
+            <tr><td>Media</td><td class="res num">${f.u(media)}</td><td>Promedio aritmético.</td></tr>
+            <tr><td>Rango</td><td class="res num">${f.u(rango)}</td><td>Diferencia entre máximo y mínimo.</td></tr>
+            <tr><td>Varianza poblacional</td><td class="res num">${f.u2(varianza)}</td><td>Dispersión cuadrática respecto a la media.</td></tr>
+            <tr><td>Desviación estándar poblacional</td><td class="res num">${f.u(desviacion)}</td><td>Dispersión típica alrededor de la media.</td></tr>
+            <tr><td>Coeficiente de variación (CV)</td><td class="res num">${fmt(cv, 2)} %</td><td>Desviación estándar relativa a la media.</td></tr>
+          </tbody>
         </table>
       </div>
-      <p class="an-nota">Unidad de medida: ${unidadTxt}. Los cuartiles se calculan con el algoritmo CUARTIL.INC de Excel (interpolación lineal). La varianza usa n − 1 (muestral).</p>
 
-      <h3 class="an-sub">Tabla de frecuencias agrupadas</h3>
-      <ul class="formula-lista fx">
-        <li><b>Regla de Sturges:</b> k = 1 + 3,322·log<sub>10</sub>(n) = 1 + 3,322·log<sub>10</sub>(${n}) = ${fmt(g.kRaw, 4)} → k = ${g.k} clase(s)</li>
-        <li><b>Rango:</b> R = x<sub>máx</sub> − x<sub>mín</sub> = ${fl(g.max)} − ${fl(g.min)} = ${fl(g.R)}</li>
-        <li><b>Amplitud:</b> A = R / k = ${fl(g.R)} / ${g.k} = ${fmt(g.R / g.k, d + 3)} → redondeada hacia arriba a ${d} decimal(es): A = ${fl(g.A)}${g.rangoCero ? " (R = 0: se usa una unidad del último decimal)" : ""}</li>
-        <li><b>Límites:</b> L<sub>1</sub> = x<sub>mín</sub> = ${fl(g.min)}; L<sub>s</sub> = L<sub>i</sub> + A. Intervalos [L<sub>i</sub>; L<sub>s</sub>), excepto la última clase [L<sub>i</sub>; L<sub>s</sub>]</li>
-        <li><b>Marca de clase:</b> x<sub>i</sub> = (L<sub>i</sub> + L<sub>s</sub>) / 2</li>
-        <li><b>Frecuencias:</b> f<sub>i</sub> = conteo; F<sub>i</sub> = Σf<sub>i</sub>; h<sub>i</sub> = (f<sub>i</sub> / n)·100; H<sub>i</sub> = (F<sub>i</sub> / n)·100</li>
-      </ul>
+      <h3 class="an-sub">Distribución de frecuencias agrupadas</h3>
+      <p class="an-nota">Número de clases por Sturges: k = ${g.k} (resultado sin redondear: ${fmt(g.kRaw, 2)}). Amplitud: ${fmt(g.A, d)}.</p>
       <div class="tabla-wrap">
         <table>
           <thead>
-            <tr><th>Clase</th><th>Li</th><th>Ls</th><th>xi</th><th>fi</th><th>Fi</th><th>hi (%)</th><th>Hi (%)</th></tr>
+            <tr><th>Clase</th><th>Intervalo</th><th>Marca (xi)</th><th>fi</th><th>Fi</th><th>hi (%)</th><th>Hi (%)</th></tr>
           </thead>
-          <tbody>${filasG}${filaTotalG}</tbody>
+          <tbody>
+            ${g.clases.map((c, i) => `
+              <tr>
+                <td>${i + 1}</td>
+                <td>[${fmt(c.li, d)}; ${fmt(c.ls, d)}${i === g.k - 1 ? "]" : ")"}</td>
+                <td class="num">${fmt(c.xi, d)}</td>
+                <td class="num">${c.fi}</td>
+                <td class="num">${c.Fi}</td>
+                <td class="num">${fmt(c.hi, 2)} %</td>
+                <td class="num">${fmt(c.Hi, 2)} %</td>
+              </tr>`).join("")}
+            <tr class="total"><td colspan="3">Total</td><td class="num">${n}</td><td class="num">${n}</td><td class="num">100,00 %</td><td class="num">100,00 %</td></tr>
+          </tbody>
         </table>
       </div>
-      <p class="an-nota">Si la amplitud se redondea hacia arriba, las últimas clases pueden quedar con frecuencia cero.</p>
 
-      <h3 class="an-sub">Gráficos</h3>
-      ${graficos}
+      <h3 class="an-sub">Histograma y polígono de frecuencias</h3>
+      <div class="grafico-wrap">${svgHistograma(g, d, v, n)}</div>
 
-      <h3 class="an-sub">Lectura automática</h3>
-      ${lectura}`;
+      <h3 class="an-sub">Diagrama de caja y bigotes</h3>
+      <div class="grafico-wrap">${svgCaja(est, v, n)}</div>
+
+      ${htmlLecturaCuant(est, v)}
+    `;
+    return h;
   }
 
-  /** Genera el HTML completo del análisis de una variable cualitativa. */
-  function htmlCualitativa(v, clave, filtrados) {
-    const n = filtrados.length;
-    const cats = v.categorias;
-    const conteos = cats.map((c) => filtrados.filter((r) => String(r[clave]) === String(c)).length);
+  /* ---------- 21. ANÁLISIS CUALITATIVO ---------- */
 
-    let acum = 0;
-    const items = cats.map((c, i) => {
-      acum += conteos[i];
-      return { cat: c, fi: conteos[i], Fi: acum, hi: conteos[i] / n, Hi: acum / n, pct: conteos[i] / n * 100 };
+  /** Construye la tabla de frecuencias, barras y lectura de una variable cualitativa. */
+  function htmlCualitativa(datos, v, clave) {
+    const n = datos.length;
+    if (!n) return '<p class="vacio">No hay datos para analizar con los filtros seleccionados.</p>';
+
+    // Conteo de categorías observadas; se conserva el orden de las categorías definidas
+    const conteo = new Map();
+    v.categorias.forEach((c) => conteo.set(String(c), 0));
+    datos.forEach((r) => {
+      const val = String(r[clave]);
+      conteo.set(val, (conteo.get(val) || 0) + 1);
     });
 
-    const filas = items.map((it) =>
-      `<tr>
-         <td data-label="Categoría"><b>${esc(it.cat)}</b></td>
-         <td data-label="fi" class="num">${it.fi}</td>
-         <td data-label="Fi" class="num">${it.Fi}</td>
-         <td data-label="hi" class="num">${fmt(it.hi, 4)}</td>
-         <td data-label="Hi" class="num">${fmt(it.Hi, 4)}</td>
-         <td data-label="Porcentaje" class="num">${fmt(it.pct, 2)} %</td>
-       </tr>`).join("");
-    const sumaHi = items.reduce((a, it) => a + it.hi, 0);
-    const sumaPct = items.reduce((a, it) => a + it.pct, 0);
-    const total =
-      `<tr class="total">
-         <td data-label="Categoría">Total</td>
-         <td data-label="fi" class="num">${n}</td>
-         <td data-label="Fi" class="num">—</td>
-         <td data-label="hi" class="num">${fmt(sumaHi, 4)}</td>
-         <td data-label="Hi" class="num">—</td>
-         <td data-label="Porcentaje" class="num">${fmt(sumaPct, 2)} %</td>
-       </tr>`;
+    const items = v.categorias.map((c) => ({
+      etq: String(c),
+      fi: conteo.get(String(c)) || 0,
+      pct: (conteo.get(String(c)) || 0) / n * 100
+    }));
 
-    const maxFi = Math.max(...conteos);
-    const modales = items.filter((it) => it.fi === maxFi).map((it) => it.cat);
-    const textoModal = modales.length === 1
-      ? `La categoría más frecuente es <b>${esc(modales[0])}</b> con ${maxFi} registro(s) (${fmt(maxFi / n * 100, 2)} %).`
-      : `Hay empate entre las categorías más frecuentes: <b>${modales.map(esc).join("; ")}</b>, con ${maxFi} registro(s) cada una (${fmt(maxFi / n * 100, 2)} % cada una).`;
-
-    // NUEVO: gráfico SVG de barras horizontales y lectura automática
-    const grafico = svgBarrasH(items.map((it) => ({ etq: String(it.cat), val: it.fi, pct: it.pct })), v, n);
-    const lectura = htmlLecturaCual(v, items, n);
-
-    return `
+    let h = `
+      <div class="an-contexto">
+        <b>${esc(v.nombre)}</b> · ${esc(v.tipo)} · ${n} observación(es) válidas.
+      </div>
       <div class="kpis">
-        <div class="kpi"><span>Datos (n)</span><b>${fmt(n, 0)}</b></div>
-        <div class="kpi"><span>Categorías</span><b>${cats.length}</b></div>
-        <div class="kpi"><span>Categoría modal</span><b>${modales.map(esc).join("; ")}</b></div>
+        <div class="kpi"><span>Total de observaciones</span><b>${n}</b></div>
+        <div class="kpi"><span>Categorías</span><b>${v.categorias.length}</b></div>
+        <div class="kpi"><span>Mayor frecuencia</span><b>${Math.max(...items.map((i) => i.fi))}</b></div>
       </div>
 
       <h3 class="an-sub">Tabla de frecuencias</h3>
-      <ul class="formula-lista fx">
-        <li><b>Frecuencia absoluta:</b> f<sub>i</sub> = número de registros de la categoría i (Σf<sub>i</sub> = n = ${n})</li>
-        <li><b>Frecuencia acumulada:</b> F<sub>i</sub> = f<sub>1</sub> + f<sub>2</sub> + … + f<sub>i</sub></li>
-        <li><b>Frecuencia relativa:</b> h<sub>i</sub> = f<sub>i</sub> / n</li>
-        <li><b>Frecuencia relativa acumulada:</b> H<sub>i</sub> = F<sub>i</sub> / n</li>
-        <li><b>Porcentaje:</b> % = h<sub>i</sub> · 100</li>
-      </ul>
       <div class="tabla-wrap">
         <table>
-          <thead>
-            <tr><th>Categoría</th><th>fi</th><th>Fi</th><th>hi</th><th>Hi</th><th>Porcentaje</th></tr>
-          </thead>
-          <tbody>${filas}${total}</tbody>
+          <thead><tr><th>Categoría</th><th>Frecuencia absoluta (fi)</th><th>Porcentaje (%)</th></tr></thead>
+          <tbody>
+            ${items.map((i) => `
+              <tr>
+                <td>${esc(i.etq)}</td>
+                <td class="num">${i.fi}</td>
+                <td class="num">${fmt(i.pct, 2)} %</td>
+              </tr>`).join("")}
+            <tr class="total"><td>Total</td><td class="num">${n}</td><td class="num">100,00 %</td></tr>
+          </tbody>
         </table>
       </div>
-      <p class="an-nota">${textoModal}${v.tipo === "Cualitativa ordinal" ? " La variable es ordinal: las categorías se muestran de menor a mayor satisfacción." : ""}</p>
 
-      <h3 class="an-sub">Gráfico</h3>
-      <div class="grafico-wrap">${grafico}</div>
+      <h3 class="an-sub">Gráfico de barras horizontales</h3>
+      <div class="grafico-wrap">${svgBarrasH(items, v, n)}</div>
 
-      <h3 class="an-sub">Lectura automática</h3>
-      ${lectura}`;
+      ${htmlLecturaCual(items, v, n)}
+    `;
+    return h;
   }
 
-  /* ---------- 20. REFRESCO DE LA PESTAÑA ---------- */
+  /* ---------- 22. RENDERIZAR ANÁLISIS ---------- */
 
-  /** Recalcula y dibuja el análisis según la variable y el filtro elegidos. */
-  function refrescarAnalisis() {
-    poblarFiltroValores();   // actualiza los conteos por si hubo cambios en los registros
-
+  /** Actualiza la sección de análisis según la variable y el filtro seleccionados. */
+  function actualizarAnalisis() {
     const clave = $("an-variable").value;
     const v = VARIABLES_ANALISIS[clave];
-    const fv = $("an-filtro-var").value;
-    const fval = $("an-filtro-val").value;
-    const filtrados = obtenerRegistrosFiltrados();
-    const cont = $("an-resultado");
+    if (!v) return;
 
-    const filtroTxt = (fv && fval !== "")
-      ? `${esc(VARIABLES_ANALISIS[fv].corto)} = ${esc(fval)}` : "ninguno";
-    const contexto =
-      `<div class="an-contexto"><b>Variable:</b> ${esc(v.nombre)} (${esc(v.tipo)}) · ` +
-      `<b>Filtro:</b> ${filtroTxt} · <b>n =</b> ${filtrados.length}</div>`;
+    const datos = obtenerRegistrosFiltrados();
+    const salida = $("an-resultado");
 
     if (!registros.length) {
-      cont.innerHTML = contexto + '<div class="pendiente">Aún no hay registros. Ve a la pestaña <b>Registrar</b> para agregar datos.</div>';
-      return;
-    }
-    if (!filtrados.length) {
-      cont.innerHTML = contexto + '<div class="pendiente">No hay registros que cumplan el filtro seleccionado.</div>';
+      salida.innerHTML = '<p class="vacio">Aún no hay registros. Agrega datos en la pestaña «Registrar» para ver el análisis estadístico.</p>';
       return;
     }
 
-    cont.innerHTML = contexto + (v.cuant
-      ? htmlCuantitativa(v, filtrados.map((r) => r[clave]))
-      : htmlCualitativa(v, clave, filtrados));
+    if (!datos.length) {
+      salida.innerHTML = '<p class="vacio">No hay registros que coincidan con el filtro seleccionado.</p>';
+      return;
+    }
+
+    salida.innerHTML = v.cuant
+      ? htmlCuantitativa(datos, v)
+      : htmlCualitativa(datos, v, clave);
   }
 
-  /** Enlaza los controles de la pestaña Análisis (se ejecuta una sola vez). */
-  function iniciarAnalisis() {
+  // Cambiar variable: reconstruye filtros y resultados
+  $("an-variable").addEventListener("change", () => {
     poblarFiltroVariable();
     poblarFiltroValores();
+    actualizarAnalisis();
+  });
 
-    $("an-variable").addEventListener("change", () => {
-      poblarFiltroVariable();
-      refrescarAnalisis();
-    });
-    $("an-filtro-var").addEventListener("change", () => {
-      $("an-filtro-val").value = "";
-      refrescarAnalisis();
-    });
-    $("an-filtro-val").addEventListener("change", refrescarAnalisis);
-    $("an-quitar-filtro").addEventListener("click", () => {
-      $("an-filtro-var").value = "";
-      refrescarAnalisis();
-    });
+  // Cambiar variable de filtro: reconstruye sus categorías
+  $("an-filtro-var").addEventListener("change", () => {
+    poblarFiltroValores();
+    actualizarAnalisis();
+  });
 
-    // Al abrir la pestaña se recalcula con los registros más recientes
-    document.querySelector('nav.tabs button[data-tab="analisis"]')
-      .addEventListener("click", refrescarAnalisis);
+  // Cambiar valor de filtro
+  $("an-filtro-val").addEventListener("change", actualizarAnalisis);
 
-    // Al cambiar entre vista de celular y de computador (o girar el teléfono)
-    // se vuelven a dibujar los gráficos con las medidas adecuadas
-    let modoMovil = esMovil();
-    window.addEventListener("resize", () => {
-      if (esMovil() !== modoMovil) {
-        modoMovil = esMovil();
-        refrescarAnalisis();
-      }
-    });
+  // Quitar filtro
+  $("an-quitar-filtro").addEventListener("click", () => {
+    $("an-filtro-var").value = "";
+    poblarFiltroValores();
+    actualizarAnalisis();
+  });
 
-    refrescarAnalisis();
+  // Al redimensionar la ventana se redibujan los SVG con el ancho correspondiente
+  let resizeAnalisis;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeAnalisis);
+    resizeAnalisis = setTimeout(() => {
+      if ($("tab-analisis").classList.contains("activo")) actualizarAnalisis();
+    }, 180);
+  });
+
+  /* ---------- 23. INICIALIZACIÓN ---------- */
+
+  function iniciar() {
+    cargarRegistros();
+    reiniciarFormulario();
+    renderizar();
+    poblarFiltroVariable();
+    poblarFiltroValores();
+    actualizarAnalisis();
   }
 
-  /* ---------- 21. INICIO ---------- */
-  cargarRegistros();
-  reiniciarFormulario();
-  renderizar();
-  iniciarAnalisis();
+  iniciar();
 
 })();
 </script>
